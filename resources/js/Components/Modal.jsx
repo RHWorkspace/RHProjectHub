@@ -8,7 +8,7 @@ import React from 'react';
  *   onClose    () => void     — called when backdrop or ✕ is clicked
  *   title      string         — modal heading
  *   icon       string         — emoji/icon shown left of title (optional)
- *   size       'sm'|'md'|'lg' — max-width (default 'md')
+ *   size       'sm'|'md'|'lg'|'xl' — max-width (default 'md')
  *   children   ReactNode      — body + footer content (use ModalBody / ModalFooter helpers, or raw JSX)
  */
 export default function Modal({ open, onClose, title, icon, size = 'md', processing = false, children }) {
@@ -18,6 +18,7 @@ export default function Modal({ open, onClose, title, icon, size = 'md', process
         sm: 'max-w-md',
         md: 'max-w-lg',
         lg: 'max-w-2xl',
+        xl: 'max-w-4xl',
     };
 
     return (

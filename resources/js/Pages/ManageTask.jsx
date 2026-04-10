@@ -520,9 +520,11 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
             </div>
 
             {/* ── Add Task Modal ────────────────────────── */}
-            <Modal open={showAddModal} onClose={() => setShowAddModal(false)} title="Tambah Task Baru" icon="+" size="lg" processing={addForm.processing}>
+            <Modal open={showAddModal} onClose={() => setShowAddModal(false)} title="Tambah Task Baru" icon="+" size="xl" processing={addForm.processing}>
                 <form onSubmit={submitAdd}>
                     <ModalBody>
+                        <div className="grid grid-cols-2 gap-x-6">
+                        <div className="space-y-4">
                         {/* 📍 Lokasi */}
                         <div>
                             <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5 flex items-center gap-1.5">
@@ -584,9 +586,10 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
                                 </div>
                             </div>
                         </div>
-
+                        </div>{/* end left col */}
+                        <div className="space-y-4">
                         {/* 🏷️ Status & Prioritas */}
-                        <div className="border-t border-gray-100 pt-4">
+                        <div>
                             <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5 flex items-center gap-1.5">
                                 <span>🏷️</span> Status & Prioritas
                             </p>
@@ -704,6 +707,8 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
                         </div>
                         )}
 
+                        </div>{/* end right col */}
+                        </div>{/* end grid */}
                     </ModalBody>
                     <ModalFooter
                         onCancel={() => setShowAddModal(false)}
@@ -713,9 +718,11 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
                 </form>
             </Modal>
             {/* ── Edit Modal ───────────────────────────── */}
-            <Modal open={!!editingTask} onClose={() => setEditingTask(null)} title="Edit Task" icon="edit" size="lg" processing={editForm.processing}>
+            <Modal open={!!editingTask} onClose={() => setEditingTask(null)} title="Edit Task" icon="edit" size="xl" processing={editForm.processing}>
                 <form onSubmit={submitEdit}>
                     <ModalBody>
+                        <div className="grid grid-cols-2 gap-x-6">
+                        <div className="space-y-4">
                         {/* 📝 Informasi Task */}
                         <div>
                             <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5 flex items-center gap-1.5">
@@ -744,9 +751,10 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
                                 </div>
                             </div>
                         </div>
-
+                        </div>{/* end left col */}
+                        <div className="space-y-4">
                         {/* 🏷️ Status & Prioritas */}
-                        <div className="border-t border-gray-100 pt-4">
+                        <div>
                             <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5 flex items-center gap-1.5">
                                 <span>🏷️</span> Status & Prioritas
                             </p>
@@ -866,6 +874,8 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
                         </div>
                         )}
 
+                        </div>{/* end right col */}
+                        </div>{/* end grid */}
                     </ModalBody>
                     <ModalFooter
                         onCancel={() => setEditingTask(null)}
