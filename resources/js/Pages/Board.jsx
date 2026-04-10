@@ -142,6 +142,7 @@ const PRIORITY_META = {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function Board({ auth, board, tasks, users, labels: initialLabels = [] }) {
+    const [showAddModal,  setShowAddModal]  = useState(false);
     const [showEditForm,  setShowEditForm]  = useState(false);
     const [selectedTask,  setSelectedTask]  = useState(null);
     const [viewTaskId,    setViewTaskId]    = useState(null);
@@ -181,7 +182,7 @@ export default function Board({ auth, board, tasks, users, labels: initialLabels
 
     const submit = (e) => {
         e.preventDefault();
-        post(`/boards/${board.id}/tasks`, { onSuccess: () => reset() });
+        post(`/boards/${board.id}/tasks`, { onSuccess: () => { reset(); setShowAddModal(false); } });
     };
 
     const openEdit = (task) => {
@@ -295,222 +296,260 @@ export default function Board({ auth, board, tasks, users, labels: initialLabels
                 loading={confirmState.loading}
             />
 
-            {/* Breadcrumb */}
-            <div className="flex items-center gap-2 text-sm text-gray-500 mb-5">
-                <Link href="/dashboard" className="hover:text-gray-800 font-medium">Dashboard</Link>
-                <span>/</span>
-                <Link href={`/boards/${board.id}`} className="text-gray-900 font-semibold">{board.name}</Link>
-                {board.project && (<><span>/</span><span className="text-gray-600">{board.project.name}</span></>)}
+            {/* Breadcrumb + page actions */}
+            <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center gap-2 text-sm text-gray-500">
+                    <Link href="/dashboard" className="hover:text-gray-800 font-medium">Dashboard</Link>
+                    <span>/</span>
+                    <Link href={`/boards/${board.id}`} className="text-gray-900 font-semibold">{board.name}</Link>
+                    {board.project && (<><span>/</span><span className="text-gray-600">{board.project.name}</span></>)}
+                </div>
+                {canManageTask && (
+                    <button type="button" onClick={() => setShowAddModal(true)}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-sm transition">
+                        <span className="text-base leading-none">+</span> Tambah Task
+                    </button>
+                )}
             </div>
 
-            <div className={`grid grid-cols-1 gap-6 ${canManageTask ? 'xl:grid-cols-[320px_1fr]' : ''}`}>
-
-                {/* ── Add Task Form (admin/manager only) ────────── */}
-                {canManageTask && (
-                <div className="xl:col-span-1">
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                        <h2 className="text-base font-semibold text-gray-900 mb-4">Add New Task</h2>
-                        <form onSubmit={submit} className="space-y-5">
-                            {/* 📝 Informasi Task */}
-                            <div>
-                                <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5 flex items-center gap-1.5">
-                                    <span>📝</span> Informasi Task
-                                </p>
-                                <div className="space-y-3">
-                                    <div>
-                                        <label className="block text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1">Judul <span className="text-red-500">*</span></label>
-                                        <input type="text" value={data.title} onChange={e => setData('title', e.target.value)}
-                                            placeholder="Masukkan judul task..."
-                                            className="block w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" required />
-                                        {errors.title && <p className="mt-1 text-xs text-red-600">{errors.title}</p>}
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1">Deskripsi</label>
-                                        <textarea value={data.description} onChange={e => setData('description', e.target.value)}
-                                            placeholder="Deskripsi (opsional)..."
-                                            rows={3} className="block w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none" />
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* 🏷️ Status & Prioritas */}
-                            <div className="border-t border-gray-100 pt-4">
-                                <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5 flex items-center gap-1.5">
-                                    <span>🏷️</span> Status & Prioritas
-                                </p>
-                                <div className="space-y-3">
-                                    <div>
-                                        <label className="block text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1.5">Status</label>
-                                        <div className="flex gap-1.5 flex-wrap">
-                                            {[
-                                                { val: 'todo',        label: 'Todo',        on: 'bg-gray-500 text-white border-gray-500'       },
-                                                { val: 'in_progress', label: 'In Progress', on: 'bg-blue-500 text-white border-blue-500'       },
-                                                { val: 'done',        label: 'Done',        on: 'bg-emerald-500 text-white border-emerald-500' },
-                                            ].map(({ val, label, on }) => (
-                                                <button key={val} type="button"
-                                                    onClick={() => setData('status', val)}
-                                                    className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
-                                                        data.status === val ? on : 'border-gray-200 text-gray-500 bg-white hover:bg-gray-50'
-                                                    }`}
-                                                >{label}</button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1.5">Prioritas</label>
-                                        <div className="flex gap-1.5 flex-wrap">
-                                            {[
-                                                { val: 'low',      label: 'Low',      on: 'bg-gray-400 text-white border-gray-400'     },
-                                                { val: 'medium',   label: 'Medium',   on: 'bg-amber-400 text-white border-amber-400'   },
-                                                { val: 'high',     label: 'High',     on: 'bg-orange-500 text-white border-orange-500' },
-                                                { val: 'critical', label: 'Critical', on: 'bg-red-600 text-white border-red-600'       },
-                                            ].map(({ val, label, on }) => (
-                                                <button key={val} type="button"
-                                                    onClick={() => setData('priority', val)}
-                                                    className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
-                                                        data.priority === val ? on : 'border-gray-200 text-gray-500 bg-white hover:bg-gray-50'
-                                                    }`}
-                                                >{label}</button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <div className="flex items-center justify-between mb-1.5">
-                                            <label className="text-xs font-semibold uppercase tracking-wide text-gray-400">Progress</label>
-                                            <span className="text-sm font-bold text-blue-600">{data.progress}%</span>
-                                        </div>
-                                        <input type="range" min="0" max="100" step="5" value={data.progress}
-                                            onChange={e => setData('progress', parseInt(e.target.value))}
-                                            className="block w-full h-2 rounded-lg cursor-pointer accent-blue-600"
-                                            style={{ background: `linear-gradient(to right, #3b82f6 ${data.progress}%, #e5e7eb ${data.progress}%)` }}
-                                        />
-                                        <div className="flex justify-between text-xs text-gray-400 mt-1">
-                                            <span>0%</span><span>50%</span><span>100%</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* 👤 Penugasan & Jadwal */}
-                            <div className="border-t border-gray-100 pt-4">
-                                <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5 flex items-center gap-1.5">
-                                    <span>👤</span> Penugasan & Jadwal
-                                </p>
-                                <div className="space-y-3">
-                                    <div>
-                                        <label className="block text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1">Assign To</label>
-                                        <MultiAssigneePicker
-                                            users={users ?? []}
-                                            selected={data.assignee_ids}
-                                            onChange={ids => setData('assignee_ids', ids)}
-                                        />
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-3">
+            {/* ── Add Task Modal ────────────────────────────────── */}
+            {canManageTask && (
+            <Modal open={showAddModal} onClose={() => { setShowAddModal(false); reset(); }} title="Tambah Task Baru" icon="+" size="xl" processing={processing}>
+                <form onSubmit={submit}>
+                    <ModalBody>
+                        <div className="grid grid-cols-2 gap-x-6">
+                            {/* Left: Info + Penugasan */}
+                            <div className="space-y-4">
+                                <div>
+                                    <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5 flex items-center gap-1.5">
+                                        <span>📝</span> Informasi Task
+                                    </p>
+                                    <div className="space-y-3">
                                         <div>
-                                            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1">Start Date</label>
-                                            <input type="date" value={data.start_date} onChange={e => setData('start_date', e.target.value)}
-                                                className="block w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                                            <FieldLabel required>Judul</FieldLabel>
+                                            <FieldInput type="text" value={data.title} onChange={e => setData('title', e.target.value)}
+                                                placeholder="Masukkan judul task..." required />
+                                            {errors.title && <p className="mt-1 text-xs text-red-600">{errors.title}</p>}
                                         </div>
                                         <div>
-                                            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1">Due Date</label>
-                                            <input type="date" value={data.due_date} onChange={e => setData('due_date', e.target.value)}
-                                                className="block w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                                            <FieldLabel>Deskripsi</FieldLabel>
+                                            <FieldTextarea value={data.description} onChange={e => setData('description', e.target.value)}
+                                                rows={4} placeholder="Deskripsi (opsional)..." />
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="border-t border-gray-100 pt-4">
+                                    <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5 flex items-center gap-1.5">
+                                        <span>👤</span> Penugasan & Jadwal
+                                    </p>
+                                    <div className="space-y-3">
+                                        <div>
+                                            <FieldLabel>Assign To</FieldLabel>
+                                            <MultiAssigneePicker users={users ?? []} selected={data.assignee_ids} onChange={ids => setData('assignee_ids', ids)} />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <FieldLabel>Start Date</FieldLabel>
+                                                <FieldInput type="date" value={data.start_date} onChange={e => setData('start_date', e.target.value)} />
+                                            </div>
+                                            <div>
+                                                <FieldLabel>Due Date</FieldLabel>
+                                                <FieldInput type="date" value={data.due_date} onChange={e => setData('due_date', e.target.value)} />
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-
-                            {/* 🏷 Labels */}
-                            {labels.length > 0 && (
-                            <div className="border-t border-gray-100 pt-4">
-                                <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5 flex items-center gap-1.5">
-                                    <span>🏷</span> Labels
-                                </p>
-                                <LabelPicker allLabels={labels} selected={data.label_ids} onChange={ids => setData('label_ids', ids)} />
+                            {/* Right: Status, Prioritas, Progress, Labels */}
+                            <div className="space-y-4">
+                                <div>
+                                    <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5 flex items-center gap-1.5">
+                                        <span>🏷️</span> Status & Prioritas
+                                    </p>
+                                    <div className="space-y-3">
+                                        <div>
+                                            <FieldLabel>Status</FieldLabel>
+                                            <div className="flex gap-1.5 flex-wrap mt-1">
+                                                {[
+                                                    { val: 'todo',        label: 'Todo',        on: 'bg-gray-500 text-white border-gray-500'       },
+                                                    { val: 'in_progress', label: 'In Progress', on: 'bg-blue-500 text-white border-blue-500'       },
+                                                    { val: 'done',        label: 'Done',        on: 'bg-emerald-500 text-white border-emerald-500' },
+                                                ].map(({ val, label, on }) => (
+                                                    <button key={val} type="button" onClick={() => setData('status', val)}
+                                                        className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
+                                                            data.status === val ? on : 'border-gray-200 text-gray-500 bg-white hover:bg-gray-50'
+                                                        }`}>{label}</button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <FieldLabel>Prioritas</FieldLabel>
+                                            <div className="flex gap-1.5 flex-wrap mt-1">
+                                                {[
+                                                    { val: 'low',      label: 'Low',      on: 'bg-gray-400 text-white border-gray-400'     },
+                                                    { val: 'medium',   label: 'Medium',   on: 'bg-amber-400 text-white border-amber-400'   },
+                                                    { val: 'high',     label: 'High',     on: 'bg-orange-500 text-white border-orange-500' },
+                                                    { val: 'critical', label: 'Critical', on: 'bg-red-600 text-white border-red-600'       },
+                                                ].map(({ val, label, on }) => (
+                                                    <button key={val} type="button" onClick={() => setData('priority', val)}
+                                                        className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
+                                                            data.priority === val ? on : 'border-gray-200 text-gray-500 bg-white hover:bg-gray-50'
+                                                        }`}>{label}</button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div className="flex items-center justify-between mb-1">
+                                                <FieldLabel>Progress</FieldLabel>
+                                                <span className="text-sm font-bold text-blue-600">{data.progress}%</span>
+                                            </div>
+                                            <input type="range" min="0" max="100" step="5" value={data.progress}
+                                                onChange={e => setData('progress', parseInt(e.target.value))}
+                                                className="block w-full h-2 rounded-lg cursor-pointer accent-blue-600"
+                                                style={{ background: `linear-gradient(to right, #3b82f6 ${data.progress}%, #e5e7eb ${data.progress}%)` }} />
+                                            <div className="flex justify-between text-xs text-gray-400 mt-1">
+                                                <span>0%</span><span>50%</span><span>100%</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {labels.length > 0 && (
+                                <div className="border-t border-gray-100 pt-4">
+                                    <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5">🏷 Labels</p>
+                                    <LabelPicker allLabels={labels} selected={data.label_ids} onChange={ids => setData('label_ids', ids)} />
+                                </div>
+                                )}
                             </div>
-                            )}
-
-                            <button type="submit" disabled={processing}
-                                className="w-full flex justify-center items-center gap-2 py-2.5 px-4 rounded-xl text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-sm">
-                                {processing
-                                    ? <><svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> Menyimpan...</>
-                                    : 'Buat Task'
-                                }
-                            </button>
-                        </form>
-                    </div>
-                </div>
-                )}
+                        </div>
+                    </ModalBody>
+                    <ModalFooter onCancel={() => { setShowAddModal(false); reset(); }} submitLabel="Buat Task" processing={processing} />
+                </form>
+            </Modal>
+            )}
 
                 {/* ── Edit Task Modal ───────────────────────── */}
-                <Modal open={showEditForm && !!selectedTask} onClose={() => { setShowEditForm(false); setSelectedTask(null); editForm.reset(); }} title="Edit Task" icon="edit" size="lg" processing={editForm.processing}>
+                <Modal open={showEditForm && !!selectedTask} onClose={() => { setShowEditForm(false); setSelectedTask(null); editForm.reset(); }} title="Edit Task" icon="edit" size="xl" processing={editForm.processing}>
                     <form onSubmit={updateTask}>
                         <ModalBody>
                             {!canEditDetail && !canEditStatus && !canUpdateProgress && (
-                                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-1">
+                                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-2">
                                     ⚠️ Anda tidak memiliki izin mengedit task ini.
                                 </p>
                             )}
-                            <div>
-                                <FieldLabel required>Title</FieldLabel>
-                                <FieldInput type="text" value={editForm.data.title} onChange={e => editForm.setData('title', e.target.value)} required disabled={!canEditDetail} />
+                            <div className="grid grid-cols-2 gap-x-6">
+                                {/* ── Left column ── */}
+                                <div className="space-y-4">
+                                    <div>
+                                        <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5">📝 Informasi Task</p>
+                                        <div className="space-y-3">
+                                            <div>
+                                                <FieldLabel required>Title</FieldLabel>
+                                                <FieldInput type="text" value={editForm.data.title} onChange={e => editForm.setData('title', e.target.value)} required disabled={!canEditDetail} />
+                                            </div>
+                                            <div>
+                                                <FieldLabel>Description</FieldLabel>
+                                                <FieldTextarea value={editForm.data.description} onChange={e => editForm.setData('description', e.target.value)} rows={4} disabled={!canEditDetail} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {canManageTask && (
+                                    <div className="border-t border-gray-100 pt-4">
+                                        <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5">👤 Penugasan &amp; Jadwal</p>
+                                        <div className="space-y-3">
+                                            <div>
+                                                <FieldLabel>Assigned To</FieldLabel>
+                                                <MultiAssigneePicker
+                                                    users={users ?? []}
+                                                    selected={editForm.data.assignee_ids}
+                                                    onChange={ids => editForm.setData('assignee_ids', ids)}
+                                                />
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div>
+                                                    <FieldLabel>Start Date</FieldLabel>
+                                                    <FieldInput type="date" value={editForm.data.start_date} onChange={e => editForm.setData('start_date', e.target.value)} disabled={!canEditDetail} />
+                                                </div>
+                                                <div>
+                                                    <FieldLabel>Due Date</FieldLabel>
+                                                    <FieldInput type="date" value={editForm.data.due_date} onChange={e => editForm.setData('due_date', e.target.value)} disabled={!canEditDetail} />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    )}
+                                    {!canManageTask && (
+                                    <div className="border-t border-gray-100 pt-4">
+                                        <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5">📅 Jadwal</p>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <FieldLabel>Start Date</FieldLabel>
+                                                <FieldInput type="date" value={editForm.data.start_date} onChange={e => editForm.setData('start_date', e.target.value)} disabled={!canEditDetail} />
+                                            </div>
+                                            <div>
+                                                <FieldLabel>Due Date</FieldLabel>
+                                                <FieldInput type="date" value={editForm.data.due_date} onChange={e => editForm.setData('due_date', e.target.value)} disabled={!canEditDetail} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    )}
+                                </div>
+                                {/* ── Right column ── */}
+                                <div className="space-y-4">
+                                    <div>
+                                        <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5">🏷️ Status &amp; Prioritas</p>
+                                        <div className="space-y-3">
+                                            <div>
+                                                <FieldLabel>Status</FieldLabel>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {[
+                                                        { value: 'todo',        label: 'To Do',      active: 'bg-slate-600 text-white border-slate-600'   },
+                                                        { value: 'in_progress', label: 'In Progress', active: 'bg-blue-600 text-white border-blue-600'     },
+                                                        { value: 'done',        label: 'Done',        active: 'bg-emerald-600 text-white border-emerald-600'},
+                                                    ].map(opt => (
+                                                        <button key={opt.value} type="button"
+                                                            disabled={!canEditStatus}
+                                                            onClick={() => editForm.setData('status', opt.value)}
+                                                            className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${editForm.data.status === opt.value ? opt.active : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'} ${!canEditStatus ? 'opacity-40 cursor-not-allowed' : ''}`}>
+                                                            {opt.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <FieldLabel>Priority</FieldLabel>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {[
+                                                        { value: 'low',      label: '🟢 Low',      active: 'bg-green-600 text-white border-green-600'    },
+                                                        { value: 'medium',   label: '🟡 Medium',   active: 'bg-yellow-500 text-white border-yellow-500'  },
+                                                        { value: 'high',     label: '🟠 High',     active: 'bg-orange-500 text-white border-orange-500'  },
+                                                        { value: 'critical', label: '🔴 Critical', active: 'bg-red-600 text-white border-red-600'        },
+                                                    ].map(opt => (
+                                                        <button key={opt.value} type="button"
+                                                            disabled={!canEditDetail}
+                                                            onClick={() => editForm.setData('priority', opt.value)}
+                                                            className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${editForm.data.priority === opt.value ? opt.active : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'} ${!canEditDetail ? 'opacity-40 cursor-not-allowed' : ''}`}>
+                                                            {opt.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <FieldLabel>Progress: {editForm.data.progress}%</FieldLabel>
+                                                <input type="range" min="0" max="100" step="5" value={editForm.data.progress}
+                                                    onChange={e => editForm.setData('progress', parseInt(e.target.value))}
+                                                    disabled={!canUpdateProgress}
+                                                    className={`block w-full accent-blue-600 ${!canUpdateProgress ? 'opacity-40 cursor-not-allowed' : ''}`} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {labels.length > 0 && (
+                                    <div className="border-t border-gray-100 pt-4">
+                                        <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5">🏷 Labels</p>
+                                        <LabelPicker allLabels={labels} selected={editForm.data.label_ids} onChange={ids => editForm.setData('label_ids', ids)} />
+                                    </div>
+                                    )}
+                                </div>
                             </div>
-                            <div>
-                                <FieldLabel>Description</FieldLabel>
-                                <FieldTextarea value={editForm.data.description} onChange={e => editForm.setData('description', e.target.value)} rows={3} disabled={!canEditDetail} />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <FieldLabel>Status</FieldLabel>
-                                    <FieldSelect value={editForm.data.status} onChange={e => editForm.setData('status', e.target.value)} disabled={!canEditStatus}>
-                                        <option value="todo">To Do</option>
-                                        <option value="in_progress">In Progress</option>
-                                        <option value="done">Done</option>
-                                    </FieldSelect>
-                                </div>
-                                <div>
-                                    <FieldLabel>Priority</FieldLabel>
-                                    <FieldSelect value={editForm.data.priority} onChange={e => editForm.setData('priority', e.target.value)} disabled={!canEditDetail}>
-                                        <option value="low">Low</option>
-                                        <option value="medium">Medium</option>
-                                        <option value="high">High</option>
-                                        <option value="critical">Critical</option>
-                                    </FieldSelect>
-                                </div>
-                            </div>
-                            <div>
-                                <FieldLabel>Progress: {editForm.data.progress}%</FieldLabel>
-                                <input type="range" min="0" max="100" step="5" value={editForm.data.progress}
-                                    onChange={e => editForm.setData('progress', parseInt(e.target.value))}
-                                    disabled={!canUpdateProgress}
-                                    className={`block w-full accent-blue-600 ${!canUpdateProgress ? 'opacity-40 cursor-not-allowed' : ''}`} />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <FieldLabel>Start Date</FieldLabel>
-                                    <FieldInput type="date" value={editForm.data.start_date} onChange={e => editForm.setData('start_date', e.target.value)} disabled={!canEditDetail} />
-                                </div>
-                                <div>
-                                    <FieldLabel>Due Date</FieldLabel>
-                                    <FieldInput type="date" value={editForm.data.due_date} onChange={e => editForm.setData('due_date', e.target.value)} disabled={!canEditDetail} />
-                                </div>
-                            </div>
-                            {canManageTask && (
-                                <div>
-                                    <FieldLabel>Assigned To</FieldLabel>
-                                    <MultiAssigneePicker
-                                        users={users ?? []}
-                                        selected={editForm.data.assignee_ids}
-                                        onChange={ids => editForm.setData('assignee_ids', ids)}
-                                    />
-                                </div>
-                            )}
-                            {labels.length > 0 && (
-                                <div>
-                                    <FieldLabel>Labels</FieldLabel>
-                                    <LabelPicker allLabels={labels} selected={editForm.data.label_ids} onChange={ids => editForm.setData('label_ids', ids)} />
-                                </div>
-                            )}
                         </ModalBody>
                         <ModalFooter
                             onCancel={() => { setShowEditForm(false); setSelectedTask(null); editForm.reset(); }}
@@ -519,8 +558,8 @@ export default function Board({ auth, board, tasks, users, labels: initialLabels
                         />
                     </form>
                 </Modal>
-                                {/* ── Task List ─────────────────────────────────── */}
-                <div className="xl:col-span-1 min-w-0">
+                {/* ── Task List ─────────────────────────────────── */}
+                <div className="min-w-0">
 
                     {/* Stats bar */}
                     <div className="grid grid-cols-4 gap-3 mb-4">
@@ -592,12 +631,16 @@ export default function Board({ auth, board, tasks, users, labels: initialLabels
                                 ≡ Compact
                             </button>
                         </div>
-                        {canManageTask && (
+                        {canManageTask && (<>
+                        <button type="button" onClick={() => setShowAddModal(true)}
+                            className="text-sm rounded-lg px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold whitespace-nowrap shadow-sm transition">
+                            + Tambah Task
+                        </button>
                         <button type="button" onClick={() => setShowLabelMgr(true)}
                             className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-600 hover:bg-gray-50 focus:ring-2 focus:ring-blue-500 whitespace-nowrap">
                             🏷 Labels
                         </button>
-                        )}
+                        </>)}
                     </div>
 
                     {/* Active filter summary */}
@@ -780,7 +823,6 @@ export default function Board({ auth, board, tasks, users, labels: initialLabels
                         </div>
                     )}
                 </div>
-            </div>
 
             {/* ── Task Detail Side Panel ────────────────────────── */}
             <TaskDetailDrawer
