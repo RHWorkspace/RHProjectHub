@@ -758,27 +758,6 @@ export default function Board({ auth, board, tasks, users, labels: initialLabels
                                                                             )}
                                                                         </div>
                                                                     </div>
-                                                                    {canManageTask && (
-                                                                        <div>
-                                                                            <label className="block text-xs font-medium text-gray-500 mb-1">Assign To</label>
-                                                                            <div className="relative">
-                                                                                <MultiAssigneePicker
-                                                                                    users={users ?? []}
-                                                                                    selected={task.assignees?.map(a => a.id) ?? []}
-                                                                                    onChange={ids => updateAssign(task.id, ids)}
-                                                                                    disabled={updatingTaskAssign === task.id}
-                                                                                />
-                                                                                {updatingTaskAssign === task.id && (
-                                                                                    <span className="absolute top-1 right-2 flex items-center pointer-events-none">
-                                                                                        <svg className="animate-spin h-3.5 w-3.5 text-blue-500" fill="none" viewBox="0 0 24 24">
-                                                                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                                                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                                                                                        </svg>
-                                                                                    </span>
-                                                                                )}
-                                                                            </div>
-                                                                        </div>
-                                                                    )}
                                                                     <div className="flex items-center gap-2 pt-1">
                                                                         <button onClick={() => setViewTaskId(task.id)} className="flex-1 text-center text-sm font-medium text-gray-600 px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition">Detail</button>
                                                                         {canEditTask(task) && (
