@@ -37,9 +37,18 @@ class Task extends Model
         return $this->hasMany(Task::class, 'parent_id')->with('assignedUser');
     }
 
+    /** Single assignee relation — kept for subtasks (uses assigned_to column). */
     public function assignedUser()
     {
         return $this->belongsTo(User::class, 'assigned_to');
+    }
+
+    /** Multiple assignees — used by parent tasks via task_assignees pivot. */
+    public function assignees()
+    {
+        return $this->belongsToMany(User::class, 'task_assignees')
+            ->select('users.id', 'users.name', 'users.email', 'users.role')
+            ->withTimestamps();
     }
 
     public function comments()

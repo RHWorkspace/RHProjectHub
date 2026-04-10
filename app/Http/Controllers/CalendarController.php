@@ -35,12 +35,12 @@ class CalendarController extends Controller
         $taskQuery = Task::with([
             'board:id,name,project_id',
             'board.project:id,name',
-            'assignedUser:id,name,email',
+            'assignees',
         ])->whereNotNull('due_date');
 
         if (!$isAdmin) {
             $taskQuery->where(function ($q) use ($authUser, $accessibleProjectIds) {
-                $q->where('assigned_to', $authUser->id)
+                $q->whereHas('assignees', fn($aq) => $aq->where('users.id', $authUser->id))
                   ->orWhereHas('board', fn($b) => $b->whereIn('project_id', $accessibleProjectIds));
             });
         }
@@ -68,9 +68,11 @@ class CalendarController extends Controller
                 'project_id'     => $task->board?->project_id,
                 'board'          => $task->board?->name ?? '—',
                 'board_id'       => $task->board_id,
-                'assignee'       => $task->assignedUser
-                    ? ['id' => $task->assignedUser->id, 'name' => $task->assignedUser->name, 'email' => $task->assignedUser->email]
-                    : null,
+                'assignees'      => $task->assignees->map(fn($u) => [
+                    'id'    => $u->id,
+                    'name'  => $u->name,
+                    'email' => $u->email,
+                ])->values(),
             ];
         })->values();
 

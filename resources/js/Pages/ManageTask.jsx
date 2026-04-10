@@ -61,7 +61,7 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
     const updateStatus = (taskId, status) =>
         router.patch(`/tasks/${taskId}/status`, { status }, { preserveScroll: true });
     const updateAssign = (taskId, assignedTo) =>
-        router.patch(`/tasks/${taskId}/assignment`, { assigned_to: assignedTo }, { preserveScroll: true });
+        router.patch(`/tasks/${taskId}/assignment`, { assignee_ids: assignedTo ? [assignedTo] : [] }, { preserveScroll: true });
 
     // ── Edit modal ────────────────────────────────────────────
     const [editingTask, setEditingTask] = useState(null);
@@ -78,7 +78,7 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
         status:      'todo',
         priority:    'medium',
         progress:    0,
-        assigned_to: '',
+        assignee_ids: [],
         start_date:  '',
         due_date:    '',
         label_ids:   [],
@@ -94,7 +94,7 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
         status:      'todo',
         priority:    'medium',
         progress:    0,
-        assigned_to: '',
+        assignee_ids: [],
         start_date:  '',
         due_date:    '',
         label_ids:   [],
@@ -126,7 +126,7 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
             status:      task.status,
             priority:    task.priority || 'medium',
             progress:    task.progress ?? 0,
-            assigned_to: task.assigned_to ?? '',
+            assignee_ids: task.assignees?.map(a => a.id) ?? [],
             start_date:  task.start_date ? task.start_date.substring(0, 10) : '',
             due_date:    task.due_date ? task.due_date.substring(0, 10) : '',
             label_ids:   task.labels?.map(l => l.id) ?? [],
@@ -170,14 +170,14 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
                 (t) =>
                     t.title.toLowerCase().includes(q) ||
                     (t.description || '').toLowerCase().includes(q) ||
-                    (t.assigned_user?.name || '').toLowerCase().includes(q),
+                    (t.assignees || []).some(a => a.name.toLowerCase().includes(q)),
             );
         }
         if (filterStatus   !== 'all') data = data.filter((t) => t.status   === filterStatus);
         if (filterPriority !== 'all') data = data.filter((t) => (t.priority || 'medium') === filterPriority);
         if (filterProject  !== 'all') data = data.filter((t) => t.board?.project?.id === parseInt(filterProject, 10));
         if (filterBoard    !== 'all') data = data.filter((t) => t.board?.id          === parseInt(filterBoard,   10));
-        if (filterAssignee !== 'all') data = data.filter((t) => String(t.assigned_to) === filterAssignee);
+        if (filterAssignee !== 'all') data = data.filter((t) => (t.assignees || []).some(a => String(a.id) === filterAssignee));
         if (filterLabel    !== 'all') data = data.filter((t) => t.labels?.some(l => l.id === parseInt(filterLabel)));
 
         // sort
@@ -185,8 +185,8 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
             let va = a[sortKey] ?? '';
             let vb = b[sortKey] ?? '';
             if (sortKey === 'assigned_user') {
-                va = a.assigned_user?.name ?? '';
-                vb = b.assigned_user?.name ?? '';
+                va = a.assignees?.[0]?.name ?? '';
+                vb = b.assignees?.[0]?.name ?? '';
             }
             if (sortKey === 'board') {
                 va = a.board?.name ?? '';
@@ -425,14 +425,24 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
 
                                         {/* Assignee */}
                                         <td className={tdClass}>
-                                            {task.assigned_user
-                                                ? <span className="inline-flex items-center gap-1">
-                                                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-blue-700 text-xs font-bold shrink-0">
-                                                        {task.assigned_user.name.charAt(0).toUpperCase()}
+                                            {task.assignees && task.assignees.length > 0 ? (
+                                                <div className="flex -space-x-1.5">
+                                                    {task.assignees.slice(0, 3).map(u => (
+                                                        <div key={u.id} title={u.name}
+                                                            className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100 text-blue-700 text-xs font-bold shrink-0 ring-2 ring-white">
+                                                            {u.name.charAt(0).toUpperCase()}
+                                                        </div>
+                                                    ))}
+                                                    {task.assignees.length > 3 && (
+                                                        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-200 text-gray-600 text-xs font-bold shrink-0 ring-2 ring-white">
+                                                            +{task.assignees.length - 3}
+                                                        </div>
+                                                    )}
+                                                    <span className="ml-2 text-gray-800 text-sm self-center">
+                                                        {task.assignees.length === 1 ? task.assignees[0].name : `${task.assignees.length} assignees`}
                                                     </span>
-                                                    <span className="text-gray-800 text-sm">{task.assigned_user.name}</span>
-                                                  </span>
-                                                : <span className="text-gray-400 text-xs">Unassigned</span>}
+                                                </div>
+                                            ) : <span className="text-gray-400 text-xs">Unassigned</span>}
                                         </td>
 
                                         {/* Board / Project */}
@@ -644,15 +654,27 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
                             <div className="space-y-3">
                                 <div>
                                     <FieldLabel>Assignee</FieldLabel>
-                                    <FieldSelect
-                                        value={addForm.data.assigned_to}
-                                        onChange={(e) => addForm.setData('assigned_to', e.target.value)}
-                                    >
-                                        <option value="">— Unassigned —</option>
-                                        {users.map((u) => (
-                                            <option key={u.id} value={u.id}>{u.name}</option>
-                                        ))}
-                                    </FieldSelect>
+                                    <div className="space-y-0.5 max-h-32 overflow-y-auto border border-gray-200 rounded-lg p-1.5 bg-white">
+                                        {users.length === 0 ? (
+                                            <p className="text-xs text-gray-400 italic px-2 py-1">No users available</p>
+                                        ) : (
+                                            users.map(u => {
+                                                const isChecked = addForm.data.assignee_ids.some(id => Number(id) === u.id);
+                                                return (
+                                                    <label key={u.id} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-50 cursor-pointer">
+                                                        <input type="checkbox" checked={isChecked}
+                                                            onChange={e => {
+                                                                const ids = addForm.data.assignee_ids;
+                                                                addForm.setData('assignee_ids', e.target.checked ? [...ids, u.id] : ids.filter(id => Number(id) !== u.id));
+                                                            }}
+                                                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                                        <span className="text-xs text-gray-700">{u.name}</span>
+                                                    </label>
+                                                );
+                                            })
+                                        )}
+                                    </div>
+                                    {addForm.errors.assignee_ids && <FieldError>{addForm.errors.assignee_ids}</FieldError>}
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
                                     <div>
@@ -794,15 +816,27 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
                             <div className="space-y-3">
                                 <div>
                                     <FieldLabel>Assignee</FieldLabel>
-                                    <FieldSelect
-                                        value={editForm.data.assigned_to}
-                                        onChange={(e) => editForm.setData('assigned_to', e.target.value)}
-                                    >
-                                        <option value="">— Unassigned —</option>
-                                        {users.map((u) => (
-                                            <option key={u.id} value={u.id}>{u.name}</option>
-                                        ))}
-                                    </FieldSelect>
+                                    <div className="space-y-0.5 max-h-32 overflow-y-auto border border-gray-200 rounded-lg p-1.5 bg-white">
+                                        {users.length === 0 ? (
+                                            <p className="text-xs text-gray-400 italic px-2 py-1">No users available</p>
+                                        ) : (
+                                            users.map(u => {
+                                                const isChecked = editForm.data.assignee_ids.some(id => Number(id) === u.id);
+                                                return (
+                                                    <label key={u.id} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-50 cursor-pointer">
+                                                        <input type="checkbox" checked={isChecked}
+                                                            onChange={e => {
+                                                                const ids = editForm.data.assignee_ids;
+                                                                editForm.setData('assignee_ids', e.target.checked ? [...ids, u.id] : ids.filter(id => Number(id) !== u.id));
+                                                            }}
+                                                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                                        <span className="text-xs text-gray-700">{u.name}</span>
+                                                    </label>
+                                                );
+                                            })
+                                        )}
+                                    </div>
+                                    {editForm.errors.assignee_ids && <FieldError>{editForm.errors.assignee_ids}</FieldError>}
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
                                     <div>

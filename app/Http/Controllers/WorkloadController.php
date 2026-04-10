@@ -43,11 +43,11 @@ class WorkloadController extends Controller
         // ── Load tasks for all those members (plus unassigned in team projects) ──
         $projectIds = $teams->flatMap(fn($t) => $t->projects->pluck('id'))->unique()->values();
 
-        $tasks = Task::with(['board:id,name,project_id', 'board.project:id,name'])
+        $tasks = Task::with(['assignees', 'board:id,name,project_id', 'board.project:id,name'])
             ->where(function ($q) use ($memberIds, $projectIds) {
-                $q->whereIn('assigned_to', $memberIds)
+                $q->whereHas('assignees', fn($aq) => $aq->whereIn('users.id', $memberIds))
                   ->orWhere(function ($q2) use ($projectIds) {
-                      $q2->whereNull('assigned_to')
+                      $q2->whereDoesntHave('assignees')
                          ->whereHas('board', fn($b) => $b->whereIn('project_id', $projectIds));
                   });
             })
@@ -71,7 +71,7 @@ class WorkloadController extends Controller
         }
 
         $memberWorkload = $membersById->map(function ($member) use ($tasks, $memberTeamRole) {
-            $myTasks = $tasks->where('assigned_to', $member->id);
+            $myTasks = $tasks->filter(fn($t) => $t->assignees->contains('id', $member->id));
             return [
                 'id'          => $member->id,
                 'name'        => $member->name,
@@ -95,7 +95,7 @@ class WorkloadController extends Controller
         $teamWorkload = $teams->map(function ($team) use ($tasks, $memberWorkload) {
             $teamMemberIds    = $team->users->pluck('id');
             $teamUsersKeyed   = $team->users->keyBy('id');
-            $teamTasks        = $tasks->whereIn('assigned_to', $teamMemberIds);
+            $teamTasks        = $tasks->filter(fn($t) => $t->assignees->pluck('id')->intersect($teamMemberIds)->isNotEmpty());
             $members = $memberWorkload->whereIn('id', $teamMemberIds)->map(function ($m) use ($teamUsersKeyed) {
                 $pivotRole = $teamUsersKeyed->get($m['id'])?->pivot?->role ?? null;
                 return array_merge($m, ['team_role' => $pivotRole]);

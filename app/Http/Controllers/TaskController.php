@@ -27,7 +27,7 @@ class TaskController extends Controller
 
         $tasksQuery = Task::whereNull('parent_id')->with([
             'board.project.teams',
-            'assignedUser:id,name,email,role',
+            'assignees',
             'labels',
             'comments.user:id,name',
             'activityLogs.user:id,name',
@@ -47,8 +47,8 @@ class TaskController extends Controller
 
             $tasksQuery->whereHas('board', fn($q) => $q->whereIn('project_id', $projectIds));
         } else {
-            // regular user sees only their assigned tasks
-            $tasksQuery->where('assigned_to', $user->id);
+            // regular user sees only their assigned tasks (via pivot)
+            $tasksQuery->whereHas('assignees', fn($q) => $q->where('users.id', $user->id));
         }
 
         $tasks = $tasksQuery->orderByDesc('created_at')->get();
@@ -125,30 +125,36 @@ class TaskController extends Controller
         }
 
         $validated = $request->validate([
-            'board_id'    => 'required|exists:boards,id',
-            'title'       => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'status'      => 'required|in:todo,in_progress,done',
-            'priority'    => 'required|in:low,medium,high,critical',
-            'progress'    => 'required|integer|min:0|max:100',
-            'assigned_to' => 'nullable|exists:users,id',
-            'due_date'    => 'nullable|date',
-            'start_date'  => 'nullable|date',
-            'label_ids'   => 'array',
-            'label_ids.*' => 'integer|exists:labels,id',
+            'board_id'       => 'required|exists:boards,id',
+            'title'          => 'required|string|max:255',
+            'description'    => 'nullable|string',
+            'status'         => 'required|in:todo,in_progress,done',
+            'priority'       => 'required|in:low,medium,high,critical',
+            'progress'       => 'required|integer|min:0|max:100',
+            'assignee_ids'   => 'nullable|array',
+            'assignee_ids.*' => 'integer|exists:users,id',
+            'due_date'       => 'nullable|date',
+            'start_date'     => 'nullable|date',
+            'label_ids'      => 'array',
+            'label_ids.*'    => 'integer|exists:labels,id',
         ]);
 
-        $labelIds = $validated['label_ids'] ?? [];
-        unset($validated['label_ids']);
+        $labelIds    = $validated['label_ids'] ?? [];
+        $assigneeIds = $validated['assignee_ids'] ?? [];
+        unset($validated['label_ids'], $validated['assignee_ids']);
         $newTask = Task::create($validated);
         if ($labelIds) {
             $newTask->labels()->sync($labelIds);
         }
+        $newTask->assignees()->sync($assigneeIds);
 
-        // Notify new assignee (skip self-assignment)
-        if (!empty($validated['assigned_to']) && $validated['assigned_to'] !== $user->id) {
-            $assignee = User::find($validated['assigned_to']);
-            $assignee?->notify(new TaskAssigned($newTask->load('board'), $user->name));
+        // Notify new assignees (skip self-assignment)
+        $newTask->load('board');
+        foreach ($assigneeIds as $userId) {
+            if ($userId !== $user->id) {
+                $assignee = User::find($userId);
+                $assignee?->notify(new TaskAssigned($newTask, $user->name));
+            }
         }
 
         return redirect()->back()->with('success', 'Task created.');
@@ -157,7 +163,7 @@ class TaskController extends Controller
     public function update(Request $request, Task $task)
     {
         $user    = auth()->user();
-        $isOwner = $user->id === $task->assigned_to;
+        $isOwner = $task->assignees()->where('user_id', $user->id)->exists();
 
         if (!$isOwner && !in_array($user->role, ['admin', 'manager'])) {
             abort(403, 'Unauthorized');
@@ -167,37 +173,44 @@ class TaskController extends Controller
         }
 
         $validated = $request->validate([
-            'title'       => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'status'      => 'required|in:todo,in_progress,done',
-            'priority'    => 'required|in:low,medium,high,critical',
-            'progress'    => 'required|integer|min:0|max:100',
-            'assigned_to' => 'nullable|exists:users,id',
-            'due_date'    => 'nullable|date',
-            'start_date'  => 'nullable|date',
-            'label_ids'   => 'array',
-            'label_ids.*' => 'integer|exists:labels,id',
+            'title'          => 'required|string|max:255',
+            'description'    => 'nullable|string',
+            'status'         => 'required|in:todo,in_progress,done',
+            'priority'       => 'required|in:low,medium,high,critical',
+            'progress'       => 'required|integer|min:0|max:100',
+            'assignee_ids'   => 'nullable|array',
+            'assignee_ids.*' => 'integer|exists:users,id',
+            'due_date'       => 'nullable|date',
+            'start_date'     => 'nullable|date',
+            'label_ids'      => 'array',
+            'label_ids.*'    => 'integer|exists:labels,id',
         ]);
 
-        $labelIds = $validated['label_ids'] ?? [];
-        unset($validated['label_ids']);
+        $labelIds    = $validated['label_ids'] ?? [];
+        $assigneeIds = $validated['assignee_ids'] ?? [];
+        unset($validated['label_ids'], $validated['assignee_ids']);
 
-        $oldAssignee = $task->assigned_to;
-        $oldStatus   = $task->status;
+        $oldAssigneeIds = $task->assignees()->pluck('users.id')->toArray();
+        $oldStatus      = $task->status;
 
         $task->update($validated);
         $task->labels()->sync($labelIds);
+        $task->assignees()->sync($assigneeIds);
         $task->refresh()->load('board');
 
-        // Notify newly assigned user (if assignment changed and not self)
-        if (($validated['assigned_to'] ?? null) !== $oldAssignee && !empty($validated['assigned_to']) && $validated['assigned_to'] !== $user->id) {
-            $assignee = User::find($validated['assigned_to']);
-            $assignee?->notify(new TaskAssigned($task, $user->name));
+        // Notify newly added assignees (if assignment changed, skip self)
+        $addedIds = array_diff($assigneeIds, $oldAssigneeIds);
+        foreach ($addedIds as $userId) {
+            if ($userId !== $user->id) {
+                $assignee = User::find($userId);
+                $assignee?->notify(new TaskAssigned($task, $user->name));
+            }
         }
-        // Notify assigned user if status changed (and they didn't make the change)
-        if ($validated['status'] !== $oldStatus && $task->assigned_to && $task->assigned_to !== $user->id) {
-            $assignee = User::find($task->assigned_to);
-            $assignee?->notify(new TaskStatusChanged($task, $oldStatus, $validated['status'], $user->name));
+        // Notify all current assignees if status changed (skip self)
+        if ($validated['status'] !== $oldStatus) {
+            $task->assignees()->where('user_id', '!=', $user->id)->get()->each(
+                fn ($assignee) => $assignee->notify(new TaskStatusChanged($task, $oldStatus, $validated['status'], $user->name))
+            );
         }
 
         return redirect()->back()->with('success', 'Task updated.');

@@ -114,7 +114,7 @@ class BoardController extends Controller
                 'user' => $user,
             ],
             'board'  => $board->load('project'),
-            'tasks'  => $board->tasks()->whereNull('parent_id')->with(['assignedUser', 'labels', 'comments.user', 'activityLogs.user', 'subtasks.assignedUser'])->get(),
+            'tasks'  => $board->tasks()->whereNull('parent_id')->with(['assignees', 'labels', 'comments.user', 'activityLogs.user', 'subtasks.assignedUser'])->get(),
             'users'  => $usersQuery->get(),
             'labels' => Label::where('project_id', $board->project_id)->orderBy('name')->get(),
         ]);
@@ -137,16 +137,17 @@ class BoardController extends Controller
         }
 
         $validated = $request->validate([
-            'title'       => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'status'      => 'required|in:todo,in_progress,done',
-            'priority'    => 'required|in:low,medium,high,critical',
-            'progress'    => 'required|integer|min:0|max:100',
-            'assigned_to' => ['nullable', Rule::in($assignableUserIds)],
-            'due_date'    => 'nullable|date',
-            'start_date'  => 'nullable|date',
-            'label_ids'   => 'array',
-            'label_ids.*' => 'integer|exists:labels,id',
+            'title'          => 'required|string|max:255',
+            'description'    => 'nullable|string',
+            'status'         => 'required|in:todo,in_progress,done',
+            'priority'       => 'required|in:low,medium,high,critical',
+            'progress'       => 'required|integer|min:0|max:100',
+            'assignee_ids'   => ['nullable', 'array'],
+            'assignee_ids.*' => ['integer', Rule::in($assignableUserIds)],
+            'due_date'       => 'nullable|date',
+            'start_date'     => 'nullable|date',
+            'label_ids'      => 'array',
+            'label_ids.*'    => 'integer|exists:labels,id',
         ]);
 
         $task = $board->tasks()->create([
@@ -155,10 +156,12 @@ class BoardController extends Controller
             'status'      => $validated['status'],
             'priority'    => $validated['priority'],
             'progress'    => $validated['progress'],
-            'assigned_to' => $validated['assigned_to'] ?? null,
             'due_date'    => $validated['due_date'] ?? null,
             'start_date'  => $validated['start_date'] ?? null,
         ]);
+
+        $assigneeIds = $validated['assignee_ids'] ?? [];
+        $task->assignees()->sync($assigneeIds);
 
         if (!empty($validated['label_ids'])) {
             $task->labels()->sync($validated['label_ids']);
@@ -170,10 +173,13 @@ class BoardController extends Controller
             'priority' => $task->priority,
         ]);
 
-        // Notify the assigned user (skip self-notifications)
-        if ($task->assigned_to && $task->assigned_to !== $authUser->id) {
-            $assignee = User::find($task->assigned_to);
-            $assignee?->notify(new TaskAssigned($task->load('board'), $authUser->name));
+        // Notify each assigned user (skip self-notifications)
+        $task->load('board');
+        foreach ($assigneeIds as $userId) {
+            if ($userId !== $authUser->id) {
+                $assignee = User::find($userId);
+                $assignee?->notify(new TaskAssigned($task, $authUser->name));
+            }
         }
 
         return redirect()->back()->with('success', 'Task created successfully!');
@@ -182,7 +188,7 @@ class BoardController extends Controller
     public function updateTaskStatus(Request $request, Task $task)
     {
         $authUser = auth()->user();
-        $isOwner  = $authUser->id === $task->assigned_to;
+        $isOwner  = $task->assignees()->where('user_id', $authUser->id)->exists();
         if (!$isOwner && !in_array($authUser->role, ['admin', 'manager'])) {
             abort(403);
         }
@@ -202,10 +208,12 @@ class BoardController extends Controller
             ['status' => $validated['status']]
         );
 
-        // Notify assigned user if they didn't make the change themselves
-        if ($task->assigned_to && $task->assigned_to !== $authUser->id && $oldStatus !== $validated['status']) {
-            $assignee = User::find($task->assigned_to);
-            $assignee?->notify(new TaskStatusChanged($task->load('board'), $oldStatus, $validated['status'], $authUser->name));
+        // Notify all assignees who didn't make the change themselves
+        if ($oldStatus !== $validated['status']) {
+            $task->load('board');
+            $task->assignees()->where('user_id', '!=', $authUser->id)->get()->each(
+                fn ($assignee) => $assignee->notify(new TaskStatusChanged($task, $oldStatus, $validated['status'], $authUser->name))
+            );
         }
 
         return redirect()->back()->with('success', 'Task status updated!');
@@ -213,27 +221,34 @@ class BoardController extends Controller
 
     public function updateTaskAssignment(Request $request, Task $task)
     {
-        if (!in_array(auth()->user()->role, ['admin', 'manager'])) {
+        $authUser = auth()->user();
+        if (!in_array($authUser->role, ['admin', 'manager'])) {
             abort(403);
         }
 
         $validated = $request->validate([
-            'assigned_to' => 'nullable|exists:users,id',
+            'assignee_ids'   => 'nullable|array',
+            'assignee_ids.*' => 'integer|exists:users,id',
         ]);
 
-        $oldAssignee = $task->assigned_to;
-        $task->update(['assigned_to' => $validated['assigned_to']]);
+        $oldAssigneeIds = $task->assignees()->pluck('users.id')->toArray();
+        $newAssigneeIds = $validated['assignee_ids'] ?? [];
 
-        TaskActivityLog::log($task->id, auth()->id(), 'assigned',
-            ['assigned_to' => $oldAssignee],
-            ['assigned_to' => $validated['assigned_to']]
+        $task->assignees()->sync($newAssigneeIds);
+
+        TaskActivityLog::log($task->id, $authUser->id, 'assigned',
+            ['assignee_ids' => $oldAssigneeIds],
+            ['assignee_ids' => $newAssigneeIds]
         );
 
-        // Notify new assignee (if they changed and it's not a self-assignment)
-        $newAssignee = $validated['assigned_to'];
-        if ($newAssignee && $newAssignee !== $oldAssignee && $newAssignee !== auth()->id()) {
-            $assigneeUser = User::find($newAssignee);
-            $assigneeUser?->notify(new TaskAssigned($task->load('board'), auth()->user()->name));
+        // Notify newly added assignees
+        $addedIds = array_diff($newAssigneeIds, $oldAssigneeIds);
+        $task->load('board');
+        foreach ($addedIds as $userId) {
+            if ($userId !== $authUser->id) {
+                $assigneeUser = User::find($userId);
+                $assigneeUser?->notify(new TaskAssigned($task, $authUser->name));
+            }
         }
 
         return redirect()->back()->with('success', 'Task assignment updated!');
@@ -242,7 +257,7 @@ class BoardController extends Controller
     public function updateTask(Request $request, Task $task)
     {
         $authUser = auth()->user();
-        $isOwner  = $authUser->id === $task->assigned_to;
+        $isOwner  = $task->assignees()->where('user_id', $authUser->id)->exists();
         if (!$isOwner && !in_array($authUser->role, ['admin', 'manager'])) {
             abort(403);
         }
@@ -251,16 +266,17 @@ class BoardController extends Controller
         }
 
         $validated = $request->validate([
-            'title'       => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'status'      => 'required|in:todo,in_progress,done',
-            'priority'    => 'required|in:low,medium,high,critical',
-            'progress'    => 'required|integer|min:0|max:100',
-            'due_date'    => 'nullable|date',
-            'start_date'  => 'nullable|date',
-            'assigned_to' => 'nullable|exists:users,id',
-            'label_ids'   => 'array',
-            'label_ids.*' => 'integer|exists:labels,id',
+            'title'          => 'required|string|max:255',
+            'description'    => 'nullable|string',
+            'status'         => 'required|in:todo,in_progress,done',
+            'priority'       => 'required|in:low,medium,high,critical',
+            'progress'       => 'required|integer|min:0|max:100',
+            'due_date'       => 'nullable|date',
+            'start_date'     => 'nullable|date',
+            'assignee_ids'   => 'nullable|array',
+            'assignee_ids.*' => 'integer|exists:users,id',
+            'label_ids'      => 'array',
+            'label_ids.*'    => 'integer|exists:labels,id',
         ]);
 
         $update = [
@@ -273,14 +289,9 @@ class BoardController extends Controller
             'start_date'  => $validated['start_date'] ?? null,
         ];
 
-        // Only admin/manager can change assignment via general update
-        if (in_array($authUser->role, ['admin', 'manager'])) {
-            $update['assigned_to'] = $validated['assigned_to'] ?? null;
-        }
-
         $changes = [];
-        foreach (['title', 'description', 'status', 'priority', 'progress', 'due_date', 'start_date', 'assigned_to'] as $field) {
-            if (array_key_exists($field, $update) && (string)$task->{$field} !== (string)($update[$field] ?? '')) {
+        foreach (['title', 'description', 'status', 'priority', 'progress', 'due_date', 'start_date'] as $field) {
+            if ((string)$task->{$field} !== (string)($update[$field] ?? '')) {
                 $changes[$field] = ['old' => $task->{$field}, 'new' => $update[$field]];
             }
         }
@@ -289,6 +300,18 @@ class BoardController extends Controller
 
         // Sync labels
         $task->labels()->sync($validated['label_ids'] ?? []);
+
+        // Only admin/manager can change assignees
+        $oldAssigneeIds = [];
+        $newAssigneeIds = [];
+        if (in_array($authUser->role, ['admin', 'manager'])) {
+            $oldAssigneeIds = $task->assignees()->pluck('users.id')->toArray();
+            $newAssigneeIds = $validated['assignee_ids'] ?? [];
+            $task->assignees()->sync($newAssigneeIds);
+            if (array_diff($newAssigneeIds, $oldAssigneeIds) || array_diff($oldAssigneeIds, $newAssigneeIds)) {
+                $changes['assignees'] = ['old' => $oldAssigneeIds, 'new' => $newAssigneeIds];
+            }
+        }
 
         if (!empty($changes)) {
             TaskActivityLog::log($task->id, $authUser->id, 'updated',
@@ -299,16 +322,19 @@ class BoardController extends Controller
 
         // Fire notifications based on changes
         $task->refresh()->load('board');
-        if (isset($changes['assigned_to'])) {
-            $newAssignee = $changes['assigned_to']['new'];
-            if ($newAssignee && $newAssignee !== $authUser->id) {
-                $assigneeUser = User::find($newAssignee);
-                $assigneeUser?->notify(new TaskAssigned($task, $authUser->name));
+        if (isset($changes['assignees'])) {
+            $addedIds = array_diff($newAssigneeIds, $oldAssigneeIds);
+            foreach ($addedIds as $userId) {
+                if ($userId !== $authUser->id) {
+                    $assigneeUser = User::find($userId);
+                    $assigneeUser?->notify(new TaskAssigned($task, $authUser->name));
+                }
             }
         }
-        if (isset($changes['status']) && $task->assigned_to && $task->assigned_to !== $authUser->id) {
-            $assignee = User::find($task->assigned_to);
-            $assignee?->notify(new TaskStatusChanged($task, $changes['status']['old'], $changes['status']['new'], $authUser->name));
+        if (isset($changes['status'])) {
+            $task->assignees()->where('user_id', '!=', $authUser->id)->get()->each(
+                fn ($assignee) => $assignee->notify(new TaskStatusChanged($task, $changes['status']['old'], $changes['status']['new'], $authUser->name))
+            );
         }
 
         return redirect()->back()->with('success', 'Task updated successfully!');
@@ -317,7 +343,7 @@ class BoardController extends Controller
     public function updateProgress(Request $request, Task $task)
     {
         $authUser = auth()->user();
-        $isOwner  = $authUser->id === $task->assigned_to;
+        $isOwner  = $task->assignees()->where('user_id', $authUser->id)->exists();
         $canUpdate = in_array($authUser->role, ['admin', 'manager'])
             || \App\Models\RolePermission::check($authUser->role, 'update_task_progress')
             || $isOwner; // assigned user can always update their own task progress

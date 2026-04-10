@@ -16,6 +16,94 @@ function avatarColor(name = '') {
     for (let c of name) h = (h * 31 + c.charCodeAt(0)) & 0xffff;
     return COLORS[h % COLORS.length];
 }
+// ── Avatar stack (multiple assignees) ───────────────────────────────────────
+function AvatarStack({ assignees = [], size = 7 }) {
+    if (!assignees.length) return (
+        <div className="flex items-center gap-1.5">
+            <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-sm shrink-0">👤</div>
+            <span className="text-sm text-gray-400 italic">Unassigned</span>
+        </div>
+    );
+    const shown = assignees.slice(0, 3);
+    const extra = assignees.length - 3;
+    return (
+        <div className="flex items-center gap-1.5">
+            <div className="flex -space-x-1.5">
+                {shown.map(u => (
+                    <div key={u.id} title={u.name}
+                        className={`w-${size} h-${size} rounded-full flex items-center justify-center text-white text-xs font-bold ring-2 ring-white shrink-0 ${avatarColor(u.name)}`}>
+                        {initials(u.name)}
+                    </div>
+                ))}
+                {extra > 0 && (
+                    <div className={`w-${size} h-${size} rounded-full flex items-center justify-center text-xs font-bold ring-2 ring-white bg-gray-300 text-gray-700 shrink-0`}>
+                        +{extra}
+                    </div>
+                )}
+            </div>
+            {assignees.length === 1 && (
+                <span className="text-sm font-medium text-gray-800">{assignees[0].name}</span>
+            )}
+            {assignees.length > 1 && (
+                <span className="text-sm text-gray-500">{assignees.length} assignees</span>
+            )}
+        </div>
+    );
+}
+
+// ── Compact avatar stack (for compact row view) ───────────────────────────────
+function AvatarStackCompact({ assignees = [] }) {
+    if (!assignees.length) return (
+        <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-xs text-gray-400">?</div>
+    );
+    const shown = assignees.slice(0, 3);
+    const extra = assignees.length - 3;
+    return (
+        <div className="flex -space-x-1">
+            {shown.map(u => (
+                <div key={u.id} title={u.name}
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold ring-2 ring-white shrink-0 ${avatarColor(u.name)}`}>
+                    {initials(u.name)}
+                </div>
+            ))}
+            {extra > 0 && (
+                <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ring-2 ring-white bg-gray-300 text-gray-700 shrink-0">
+                    +{extra}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ── Multi-assignee picker (checkbox list) ─────────────────────────────────────
+function MultiAssigneePicker({ users = [], selected = [], onChange, disabled = false }) {
+    return (
+        <div className={`space-y-0.5 max-h-32 overflow-y-auto border border-gray-200 rounded-lg p-1.5 bg-white ${disabled ? 'opacity-60 pointer-events-none' : ''}`}>
+            {users.length === 0 ? (
+                <p className="text-xs text-gray-400 italic px-2 py-1">No users available</p>
+            ) : (
+                users.map(u => {
+                    const isChecked = selected.some(id => Number(id) === u.id);
+                    return (
+                        <label key={u.id} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-50 cursor-pointer">
+                            <input type="checkbox" checked={isChecked}
+                                onChange={e => {
+                                    if (e.target.checked) onChange([...selected, u.id]);
+                                    else onChange(selected.filter(id => Number(id) !== u.id));
+                                }}
+                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                            <div className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 ${avatarColor(u.name)}`}>
+                                {initials(u.name)}
+                            </div>
+                            <span className="text-xs text-gray-700 truncate">{u.name}</span>
+                        </label>
+                    );
+                })
+            )}
+        </div>
+    );
+}
+
 function dueDateInfo(due_date, status) {
     if (!due_date) return null;
     const due = new Date(due_date); due.setHours(0,0,0,0);
@@ -74,16 +162,16 @@ export default function Board({ auth, board, tasks, users, labels: initialLabels
 
     const { data, setData, post, processing, errors, reset } = useForm({
         title: '', description: '', status: 'todo', priority: 'medium',
-        progress: 0, assigned_to: '', start_date: '', due_date: '', label_ids: [],
+        progress: 0, assignee_ids: [], start_date: '', due_date: '', label_ids: [],
     });
 
     const editForm = useForm({
         title: '', description: '', status: 'todo', priority: 'medium',
-        progress: 0, assigned_to: '', start_date: '', due_date: '', label_ids: [],
+        progress: 0, assignee_ids: [], start_date: '', due_date: '', label_ids: [],
     });
 
     const canManageTask = auth.user.role === 'admin' || auth.user.role === 'manager';
-    const canEditTask   = (task) => canManageTask || auth.user.id === task.assigned_to;
+    const canEditTask   = (task) => canManageTask || task.assignees?.some(a => a.id === auth.user.id);
 
     // granular task permissions (from globally-shared userPermissions)
     const userPermissions = usePage().props.userPermissions ?? [];
@@ -104,7 +192,7 @@ export default function Board({ auth, board, tasks, users, labels: initialLabels
             status:      task.status,
             priority:    task.priority || 'medium',
             progress:    task.progress ?? 0,
-            assigned_to: task.assigned_to ? String(task.assigned_to) : '',
+            assignee_ids: task.assignees?.map(a => a.id) ?? [],
             start_date:  task.start_date ? task.start_date.slice(0, 10) : '',
             due_date:    task.due_date ? task.due_date.slice(0, 10) : '',
             label_ids:   task.labels?.map(l => l.id) ?? [],
@@ -130,9 +218,9 @@ export default function Board({ auth, board, tasks, users, labels: initialLabels
         });
     };
 
-    const updateAssign = (taskId, assignedTo) => {
+    const updateAssign = (taskId, assigneeIds) => {
         setUpdatingTaskAssign(taskId);
-        router.patch(`/tasks/${taskId}/assignment`, { assigned_to: assignedTo }, {
+        router.patch(`/tasks/${taskId}/assignment`, { assignee_ids: assigneeIds }, {
             preserveScroll: true,
             onFinish: () => setUpdatingTaskAssign(null),
         });
@@ -311,11 +399,11 @@ export default function Board({ auth, board, tasks, users, labels: initialLabels
                                 <div className="space-y-3">
                                     <div>
                                         <label className="block text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1">Assign To</label>
-                                        <select value={data.assigned_to} onChange={e => setData('assigned_to', e.target.value)}
-                                            className="block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                                            <option value="">— Unassigned —</option>
-                                            {users && users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
-                                        </select>
+                                        <MultiAssigneePicker
+                                            users={users ?? []}
+                                            selected={data.assignee_ids}
+                                            onChange={ids => setData('assignee_ids', ids)}
+                                        />
                                     </div>
                                     <div className="grid grid-cols-2 gap-3">
                                         <div>
@@ -410,12 +498,11 @@ export default function Board({ auth, board, tasks, users, labels: initialLabels
                             {canManageTask && (
                                 <div>
                                     <FieldLabel>Assigned To</FieldLabel>
-                                    <FieldSelect value={editForm.data.assigned_to} onChange={e => editForm.setData('assigned_to', e.target.value)}>
-                                        <option value="">— Unassigned —</option>
-                                        {users && users.map(u => (
-                                            <option key={u.id} value={String(u.id)}>{u.name} ({u.email})</option>
-                                        ))}
-                                    </FieldSelect>
+                                    <MultiAssigneePicker
+                                        users={users ?? []}
+                                        selected={editForm.data.assignee_ids}
+                                        onChange={ids => editForm.setData('assignee_ids', ids)}
+                                    />
                                 </div>
                             )}
                             {labels.length > 0 && (
@@ -581,10 +668,7 @@ export default function Board({ auth, board, tasks, users, labels: initialLabels
                                                                     {due.label}
                                                                 </span>
                                                             )}
-                                                            {task.assigned_user
-                                                                ? <div title={task.assigned_user.name} className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold ${avatarColor(task.assigned_user.name)}`}>{initials(task.assigned_user.name)}</div>
-                                                                : <div className="shrink-0 w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-xs text-gray-400">?</div>
-                                                            }
+                                                            <div className="shrink-0"><AvatarStackCompact assignees={task.assignees ?? []} /></div>
                                                             <div className="shrink-0 hidden group-hover/row:flex items-center gap-1">
                                                                 {canEditTask(task) && (
                                                                     <button onClick={() => openEdit(task)} className="text-xs text-blue-600 px-2 py-1 rounded hover:bg-blue-50 transition">Edit</button>
@@ -648,21 +732,8 @@ export default function Board({ auth, board, tasks, users, labels: initialLabels
                                                                             </span>
                                                                         </div>
                                                                     )}
-                                                                    <div className="mt-3 flex items-center gap-2">
-                                                                        {task.assigned_user ? (
-                                                                            <>
-                                                                                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 ${avatarColor(task.assigned_user.name)}`}>{initials(task.assigned_user.name)}</div>
-                                                                                <div>
-                                                                                    <span className="text-sm font-medium text-gray-800">{task.assigned_user.name}</span>
-                                                                                    <span className="text-xs text-gray-400 ml-1.5">{task.assigned_user.email}</span>
-                                                                                </div>
-                                                                            </>
-                                                                        ) : (
-                                                                            <>
-                                                                                <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-sm shrink-0">👤</div>
-                                                                                <span className="text-sm text-gray-400 italic">Unassigned</span>
-                                                                            </>
-                                                                        )}
+                                                                    <div className="mt-3">
+                                                                        <AvatarStack assignees={task.assignees ?? []} />
                                                                     </div>
                                                                 </div>
                                                                 {/* Right: controls */}
@@ -689,16 +760,16 @@ export default function Board({ auth, board, tasks, users, labels: initialLabels
                                                                     </div>
                                                                     {canManageTask && (
                                                                         <div>
-                                                                            <label className="block text-xs font-medium text-gray-500 mb-1">Assigned To</label>
+                                                                            <label className="block text-xs font-medium text-gray-500 mb-1">Assign To</label>
                                                                             <div className="relative">
-                                                                                <select value={task.assigned_to || ''} onChange={e => updateAssign(task.id, e.target.value)}
+                                                                                <MultiAssigneePicker
+                                                                                    users={users ?? []}
+                                                                                    selected={task.assignees?.map(a => a.id) ?? []}
+                                                                                    onChange={ids => updateAssign(task.id, ids)}
                                                                                     disabled={updatingTaskAssign === task.id}
-                                                                                    className="text-sm border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 w-full disabled:opacity-60">
-                                                                                    <option value="">Unassigned</option>
-                                                                                    {users && users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                                                                                </select>
+                                                                                />
                                                                                 {updatingTaskAssign === task.id && (
-                                                                                    <span className="absolute inset-y-0 right-6 flex items-center pointer-events-none">
+                                                                                    <span className="absolute top-1 right-2 flex items-center pointer-events-none">
                                                                                         <svg className="animate-spin h-3.5 w-3.5 text-blue-500" fill="none" viewBox="0 0 24 24">
                                                                                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                                                                                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
@@ -741,7 +812,7 @@ export default function Board({ auth, board, tasks, users, labels: initialLabels
                 onEdit={() => openEdit(viewTask)}
                 canEditDetail={viewTask ? canEditDetail : false}
                 canEditStatus={viewTask ? canEditStatus : false}
-                canUpdateProgress={viewTask ? (canUpdateProgress || auth.user.id === viewTask.assigned_to) : false}
+                canUpdateProgress={viewTask ? (canUpdateProgress || viewTask.assignees?.some(a => a.id === auth.user.id)) : false}
                 canAssign={canManageTask}
                 canManageTask={canManageTask}
                 onStatusChange={updateStatus}

@@ -82,7 +82,7 @@ function DrawerContent({ task, users = [], onClose, onEdit, canEditDetail = fals
 
     // Reset inline loading states when task data updates after request completes
     useEffect(() => { setChangingStatus(false); }, [task.status]);
-    useEffect(() => { setChangingAssign(false); }, [task.assigned_to]);
+    useEffect(() => { setChangingAssign(false); }, [JSON.stringify(task.assignees)]);
 
     const submitSubtask = (e) => {
         e.preventDefault();
@@ -237,25 +237,29 @@ function DrawerContent({ task, users = [], onClose, onEdit, canEditDetail = fals
                                 </div>
                             </div>
 
-                            {/* Assignee */}
+                            {/* Assignees */}
                             <div>
-                                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Assignee</p>
-                                {task.assigned_user ? (
-                                    <div className="flex items-center gap-3 bg-gray-50 rounded-xl p-3">
-                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0 ${avatarColor(task.assigned_user.name)}`}>
-                                            {initials(task.assigned_user.name)}
-                                        </div>
-                                        <div>
-                                            <p className="font-semibold text-gray-900 text-sm">{task.assigned_user.name}</p>
-                                            <p className="text-xs text-gray-500">{task.assigned_user.email}</p>
-                                            {task.assigned_user.role && (
-                                            <span className={`inline-block mt-0.5 px-2 py-0.5 rounded-full text-xs font-medium ${
-                                                task.assigned_user.role === 'admin'   ? 'bg-red-100 text-red-700' :
-                                                task.assigned_user.role === 'manager' ? 'bg-amber-100 text-amber-700' :
-                                                'bg-blue-100 text-blue-700'
-                                            }`}>{task.assigned_user.role}</span>
-                                            )}
-                                        </div>
+                                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Assignees</p>
+                                {task.assignees && task.assignees.length > 0 ? (
+                                    <div className="space-y-2">
+                                        {task.assignees.map(u => (
+                                            <div key={u.id} className="flex items-center gap-3 bg-gray-50 rounded-xl p-3">
+                                                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0 ${avatarColor(u.name)}`}>
+                                                    {initials(u.name)}
+                                                </div>
+                                                <div>
+                                                    <p className="font-semibold text-gray-900 text-sm">{u.name}</p>
+                                                    <p className="text-xs text-gray-500">{u.email}</p>
+                                                    {u.role && (
+                                                        <span className={`inline-block mt-0.5 px-2 py-0.5 rounded-full text-xs font-medium ${
+                                                            u.role === 'admin'   ? 'bg-red-100 text-red-700' :
+                                                            u.role === 'manager' ? 'bg-amber-100 text-amber-700' :
+                                                            'bg-blue-100 text-blue-700'
+                                                        }`}>{u.role}</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 ) : (
                                     <div className="flex items-center gap-3 bg-gray-50 rounded-xl p-3 text-gray-400">
@@ -266,32 +270,40 @@ function DrawerContent({ task, users = [], onClose, onEdit, canEditDetail = fals
 
                                 {/* Inline reassign for managers/admins */}
                                 {canAssign && users.length > 0 && (
-                                    <div className="mt-2">
-                                        <label className="block text-xs text-gray-500 mb-1">Reassign to</label>
-                                        <div className="relative">
-                                            <select
-                                                value={task.assigned_to || ''}
-                                                disabled={changingAssign}
-                                                onChange={e => {
-                                                    setChangingAssign(true);
-                                                    onAssignChange(task.id, e.target.value);
-                                                }}
-                                                className="text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-full px-2 py-1.5 disabled:opacity-60"
-                                            >
-                                                <option value="">— Unassigned —</option>
-                                                {users.map(u => (
-                                                    <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
-                                                ))}
-                                            </select>
-                                            {changingAssign && (
-                                                <span className="absolute inset-y-0 right-6 flex items-center pointer-events-none">
-                                                    <svg className="animate-spin h-3.5 w-3.5 text-blue-500" fill="none" viewBox="0 0 24 24">
-                                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                                                    </svg>
-                                                </span>
-                                            )}
+                                    <div className="mt-3">
+                                        <label className="block text-xs text-gray-500 mb-1">Manage Assignees</label>
+                                        <div className={`relative space-y-0.5 max-h-36 overflow-y-auto border border-gray-200 rounded-lg p-1.5 bg-white ${changingAssign ? 'opacity-60 pointer-events-none' : ''}`}>
+                                            {users.map(u => {
+                                                const isChecked = task.assignees?.some(a => a.id === u.id);
+                                                return (
+                                                    <label key={u.id} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-50 cursor-pointer">
+                                                        <input type="checkbox" checked={isChecked}
+                                                            onChange={e => {
+                                                                setChangingAssign(true);
+                                                                const currentIds = task.assignees?.map(a => a.id) ?? [];
+                                                                const newIds = e.target.checked
+                                                                    ? [...currentIds, u.id]
+                                                                    : currentIds.filter(id => id !== u.id);
+                                                                onAssignChange(task.id, newIds);
+                                                            }}
+                                                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                                        <div className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 ${avatarColor(u.name)}`}>
+                                                            {initials(u.name)}
+                                                        </div>
+                                                        <span className="text-xs text-gray-700 truncate">{u.name}</span>
+                                                    </label>
+                                                );
+                                            })}
                                         </div>
+                                        {changingAssign && (
+                                            <p className="text-xs text-blue-500 mt-1 flex items-center gap-1">
+                                                <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                                                </svg>
+                                                Updating...
+                                            </p>
+                                        )}
                                     </div>
                                 )}
                             </div>

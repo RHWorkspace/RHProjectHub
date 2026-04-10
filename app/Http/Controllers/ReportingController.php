@@ -21,7 +21,7 @@ class ReportingController extends Controller
 
         // Admin: semua task; Manager: task dari user dalam timnya; User: hanya task sendiri
         if ($user->role === 'admin') {
-            $tasks = Task::with(['assignedUser', 'board.project.teams'])
+            $tasks = Task::with(['assignees', 'board.project.teams'])
                 ->orderBy('created_at', 'desc')
                 ->get();
         } elseif ($user->role === 'manager') {
@@ -31,20 +31,18 @@ class ReportingController extends Controller
             $teamProjectIds = $teams->flatMap(fn($team) => $team->projects->pluck('id'))->unique()->values();
 
             $tasks = Task::where(function ($q) use ($teamUserIds, $teamProjectIds) {
-                // Tasks assigned to any team member
-                $q->whereIn('assigned_to', $teamUserIds)
-                  // OR unassigned tasks that belong to a project mapped to this manager's teams
+                $q->whereHas('assignees', fn($aq) => $aq->whereIn('users.id', $teamUserIds))
                   ->orWhere(function ($q2) use ($teamProjectIds) {
-                      $q2->whereNull('assigned_to')
+                      $q2->whereDoesntHave('assignees')
                          ->whereHas('board', fn($b) => $b->whereIn('project_id', $teamProjectIds));
                   });
             })
-                ->with(['assignedUser', 'board.project.teams'])
+                ->with(['assignees', 'board.project.teams'])
                 ->orderBy('created_at', 'desc')
                 ->get();
         } else {
-            $tasks = Task::where('assigned_to', $user->id)
-                ->with(['assignedUser', 'board.project.teams'])
+            $tasks = Task::whereHas('assignees', fn($q) => $q->where('users.id', $user->id))
+                ->with(['assignees', 'board.project.teams'])
                 ->orderBy('created_at', 'desc')
                 ->get();
         }
@@ -95,7 +93,7 @@ class ReportingController extends Controller
         }
 
         if ($user->role === 'admin') {
-            $tasks    = Task::with(['assignedUser', 'board.project.teams'])
+            $tasks    = Task::with(['assignees', 'board.project.teams'])
                             ->whereNull('parent_id')
                             ->orderBy('created_at', 'desc')
                             ->get();
@@ -107,14 +105,14 @@ class ReportingController extends Controller
             $teamProjectIds = $managerTeams->flatMap(fn($t) => $t->projects->pluck('id'))->unique()->values();
 
             $tasks = Task::where(function ($q) use ($teamUserIds, $teamProjectIds) {
-                $q->whereIn('assigned_to', $teamUserIds)
+                $q->whereHas('assignees', fn($aq) => $aq->whereIn('users.id', $teamUserIds))
                   ->orWhere(function ($q2) use ($teamProjectIds) {
-                      $q2->whereNull('assigned_to')
+                      $q2->whereDoesntHave('assignees')
                          ->whereHas('board', fn($b) => $b->whereIn('project_id', $teamProjectIds));
                   });
             })
                 ->whereNull('parent_id')
-                ->with(['assignedUser', 'board.project.teams'])
+                ->with(['assignees', 'board.project.teams'])
                 ->orderBy('created_at', 'desc')
                 ->get();
 

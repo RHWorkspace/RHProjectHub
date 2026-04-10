@@ -105,8 +105,8 @@ export default function ExecutiveReport({ auth, tasks, projects, teams }) {
     const workload = useMemo(() => {
         const map = new Map();
         periodTasks.forEach(t => {
-            const key  = t.assigned_user ? t.assigned_user.id : '_unassigned';
-            const name = t.assigned_user ? t.assigned_user.name : 'Unassigned';
+            const key  = t.assignees?.length ? t.assignees[0].id : '_unassigned';
+            const name = t.assignees?.length ? t.assignees.map(a => a.name).join(', ') : 'Unassigned';
             if (!map.has(key)) map.set(key, { key, name, total: 0, done: 0, inProgress: 0, todo: 0, overdue: 0 });
             const m = map.get(key);
             m.total++;
@@ -492,8 +492,9 @@ export default function ExecutiveReport({ auth, tasks, projects, teams }) {
                                                 </span>
                                             </td>
                                             <td className="px-5 py-3 text-sm text-gray-700">
-                                                {task.assigned_user?.name
-                                                    ?? <span className="italic text-gray-400">Unassigned</span>}
+                                                {task.assignees?.length
+                                                    ? task.assignees.map(a => a.name).join(', ')
+                                                    : <span className="italic text-gray-400">Unassigned</span>}
                                             </td>
                                             <td className="px-5 py-3 text-xs text-gray-500">
                                                 <p className="font-medium text-gray-700">{task.board?.project?.name ?? '—'}</p>

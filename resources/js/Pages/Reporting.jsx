@@ -26,9 +26,9 @@ export default function Reporting({ auth, tasks, projects, boards, teams }) {
     const getUniqueAssignees = () => {
         const assignees = new Map();
         tasks.forEach((task) => {
-            if (task.assigned_user) {
-                assignees.set(task.assigned_user.id, task.assigned_user);
-            }
+            (task.assignees || []).forEach(a => {
+                assignees.set(a.id, a);
+            });
         });
         return Array.from(assignees.values());
     };
@@ -112,9 +112,9 @@ export default function Reporting({ auth, tasks, projects, boards, teams }) {
             }
 
             if (selectedAssignee === 'unassigned') {
-                if (task.assigned_user) return false;
+                if (task.assignees?.length) return false;
             } else if (selectedAssignee !== 'all') {
-                if (!task.assigned_user || task.assigned_user.id !== parseInt(selectedAssignee, 10)) {
+                if (!task.assignees?.some(a => a.id === parseInt(selectedAssignee, 10))) {
                     return false;
                 }
             }
@@ -189,7 +189,7 @@ export default function Reporting({ auth, tasks, projects, boards, teams }) {
         const rows = filteredTasks.map(task => [
             task.title ?? '',
             task.description ?? '',
-            task.assigned_user?.name ?? 'Unassigned',
+            task.assignees?.length ? task.assignees.map(a => a.name).join('; ') : 'Unassigned',
             task.board?.project?.name ?? '',
             task.board?.name ?? '',
             task.board?.project?.teams?.map(t => t.name).join('; ') ?? '',
@@ -514,12 +514,16 @@ export default function Reporting({ auth, tasks, projects, boards, teams }) {
                                         </td>
                                         {/* Assignee */}
                                         <td className="px-5 py-3.5 whitespace-nowrap">
-                                            {task.assigned_user ? (
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center shrink-0">
-                                                        {task.assigned_user.name.charAt(0).toUpperCase()}
-                                                    </div>
-                                                    <span className="text-gray-800 text-sm">{task.assigned_user.name}</span>
+                                            {task.assignees?.length > 0 ? (
+                                                <div className="flex flex-col gap-1">
+                                                    {task.assignees.map(a => (
+                                                        <div key={a.id} className="flex items-center gap-1.5">
+                                                            <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center shrink-0">
+                                                                {a.name.charAt(0).toUpperCase()}
+                                                            </div>
+                                                            <span className="text-gray-800 text-xs">{a.name}</span>
+                                                        </div>
+                                                    ))}
                                                 </div>
                                             ) : (
                                                 <span className="text-xs text-gray-400 italic">Unassigned</span>
