@@ -73,7 +73,6 @@ const PRIORITY_META = {
 function DrawerContent({ task, users = [], onClose, onEdit, canEditDetail = false, canEditStatus = false, canUpdateProgress = false, canAssign = false, canManageTask = false, onStatusChange, onAssignChange, authUser, allLabels = [] }) {
     const [activeTab, setActiveTab] = useState('detail');
     const [changingStatus, setChangingStatus] = useState(false);
-    const [changingAssign, setChangingAssign] = useState(false);
     const [cyclingSubtaskId, setCyclingSubtaskId] = useState(null);
     const [deletingSubtaskId, setDeletingSubtaskId] = useState(null);
     const commentForm  = useForm({ body: '' });
@@ -82,7 +81,6 @@ function DrawerContent({ task, users = [], onClose, onEdit, canEditDetail = fals
 
     // Reset inline loading states when task data updates after request completes
     useEffect(() => { setChangingStatus(false); }, [task.status]);
-    useEffect(() => { setChangingAssign(false); }, [JSON.stringify(task.assignees)]);
 
     const submitSubtask = (e) => {
         e.preventDefault();
@@ -268,44 +266,7 @@ function DrawerContent({ task, users = [], onClose, onEdit, canEditDetail = fals
                                     </div>
                                 )}
 
-                                {/* Inline reassign for managers/admins */}
-                                {canAssign && users.length > 0 && (
-                                    <div className="mt-3">
-                                        <label className="block text-xs text-gray-500 mb-1">Manage Assignees</label>
-                                        <div className={`relative space-y-0.5 max-h-36 overflow-y-auto border border-gray-200 rounded-lg p-1.5 bg-white ${changingAssign ? 'opacity-60 pointer-events-none' : ''}`}>
-                                            {users.map(u => {
-                                                const isChecked = task.assignees?.some(a => a.id === u.id);
-                                                return (
-                                                    <label key={u.id} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-50 cursor-pointer">
-                                                        <input type="checkbox" checked={isChecked}
-                                                            onChange={e => {
-                                                                setChangingAssign(true);
-                                                                const currentIds = task.assignees?.map(a => a.id) ?? [];
-                                                                const newIds = e.target.checked
-                                                                    ? [...currentIds, u.id]
-                                                                    : currentIds.filter(id => id !== u.id);
-                                                                onAssignChange(task.id, newIds);
-                                                            }}
-                                                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                                                        <div className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 ${avatarColor(u.name)}`}>
-                                                            {initials(u.name)}
-                                                        </div>
-                                                        <span className="text-xs text-gray-700 truncate">{u.name}</span>
-                                                    </label>
-                                                );
-                                            })}
-                                        </div>
-                                        {changingAssign && (
-                                            <p className="text-xs text-blue-500 mt-1 flex items-center gap-1">
-                                                <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
-                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                                                </svg>
-                                                Updating...
-                                            </p>
-                                        )}
-                                    </div>
-                                )}
+
                             </div>
 
                             {/* Start Date */}
