@@ -35,6 +35,9 @@ class SubtaskController extends Controller
             'due_date'    => $validated['due_date'] ?? null,
         ]);
 
+        // New subtask means parent is no longer fully done
+        $this->recalcParentProgress($task->id);
+
         return redirect()->back()->with('success', 'Subtask created.');
     }
 
@@ -99,10 +102,23 @@ class SubtaskController extends Controller
             return;
         }
 
-        $done  = $subtasks->where('status', 'done')->count();
-        $total = $subtasks->count();
-        $pct   = (int) round(($done / $total) * 100);
+        $total      = $subtasks->count();
+        $doneCount  = $subtasks->where('status', 'done')->count();
+        $inProgCount = $subtasks->where('status', 'in_progress')->count();
+        $pct        = (int) round(($doneCount / $total) * 100);
 
-        $parent->update(['progress' => $pct]);
+        // Derive parent status from subtask states
+        if ($doneCount === $total) {
+            $derivedStatus = 'done';
+        } elseif ($doneCount > 0 || $inProgCount > 0) {
+            $derivedStatus = 'in_progress';
+        } else {
+            $derivedStatus = 'todo';
+        }
+
+        $parent->update([
+            'progress' => $pct,
+            'status'   => $derivedStatus,
+        ]);
     }
 }
