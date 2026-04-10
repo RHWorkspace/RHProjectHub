@@ -308,7 +308,7 @@ export default function Users({ auth, users }) {
             </div>
 
             {/* ── Create User Modal ────────────────────────── */}
-            <Modal open={showCreateUserForm} onClose={() => { setShowCreateUserForm(false); createUserForm.reset(); }} title="Tambah User Baru" icon="👤">
+            <Modal open={showCreateUserForm} onClose={() => { setShowCreateUserForm(false); createUserForm.reset(); }} title="Tambah User Baru" icon="👤" processing={createUserForm.processing}>
                 <form onSubmit={submitUser}>
                     <ModalBody>
                         <UserFormFields form={createUserForm} idPrefix="create" />
@@ -322,7 +322,7 @@ export default function Users({ auth, users }) {
             </Modal>
 
             {/* ── Edit User Modal ───────────────────────────── */}
-            <Modal open={showEditUserForm && !!editingUser} onClose={() => { setShowEditUserForm(false); setEditingUser(null); editUserForm.reset(); }} title="Edit User" icon="✏️">
+            <Modal open={showEditUserForm && !!editingUser} onClose={() => { setShowEditUserForm(false); setEditingUser(null); editUserForm.reset(); }} title="Edit User" icon="✏️" processing={editUserForm.processing}>
                 <form onSubmit={updateUser}>
                     <ModalBody>
                         {editingUser && (

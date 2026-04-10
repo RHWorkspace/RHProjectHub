@@ -4,6 +4,7 @@ import AppLayout from '../Components/AppLayout';
 import ConfirmDialog from '../Components/ConfirmDialog';
 import Modal, { ModalBody, ModalFooter, FieldLabel, FieldInput, FieldTextarea, FieldSelect } from '../Components/Modal';
 import TaskDetailDrawer from '../Components/TaskDetailDrawer';
+import LabelManager, { LabelChip, LabelPicker } from '../Components/LabelManager';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function initials(name = '') {
@@ -52,10 +53,17 @@ const PRIORITY_META = {
 };
 
 // ── Main Component ────────────────────────────────────────────────────────────
-export default function Board({ auth, board, tasks, users }) {
+export default function Board({ auth, board, tasks, users, labels: initialLabels = [] }) {
     const [showEditForm,  setShowEditForm]  = useState(false);
     const [selectedTask,  setSelectedTask]  = useState(null);
-    const [viewTask,      setViewTask]      = useState(null);
+    const [viewTaskId,    setViewTaskId]    = useState(null);
+    const [labels,        setLabels]         = useState(initialLabels);
+
+    // Derive viewTask reactively so the drawer always shows fresh data after Inertia refreshes
+    const viewTask = useMemo(() => tasks?.find(t => t.id === viewTaskId) ?? null, [tasks, viewTaskId]);
+    const [showLabelMgr,  setShowLabelMgr]  = useState(false);
+    const [updatingTaskStatus, setUpdatingTaskStatus] = useState(null);
+    const [updatingTaskAssign, setUpdatingTaskAssign] = useState(null);
 
     // ── Confirm dialog ──────────────────────────────────────
     const CONFIRM_INIT = { open: false, title: '', message: '', onConfirm: null, loading: false };
@@ -66,12 +74,12 @@ export default function Board({ auth, board, tasks, users }) {
 
     const { data, setData, post, processing, errors, reset } = useForm({
         title: '', description: '', status: 'todo', priority: 'medium',
-        progress: 0, assigned_to: '', start_date: '', due_date: '',
+        progress: 0, assigned_to: '', start_date: '', due_date: '', label_ids: [],
     });
 
     const editForm = useForm({
         title: '', description: '', status: 'todo', priority: 'medium',
-        progress: 0, assigned_to: '', start_date: '', due_date: '',
+        progress: 0, assigned_to: '', start_date: '', due_date: '', label_ids: [],
     });
 
     const canManageTask = auth.user.role === 'admin' || auth.user.role === 'manager';
@@ -99,8 +107,9 @@ export default function Board({ auth, board, tasks, users }) {
             assigned_to: task.assigned_to ? String(task.assigned_to) : '',
             start_date:  task.start_date ? task.start_date.slice(0, 10) : '',
             due_date:    task.due_date ? task.due_date.slice(0, 10) : '',
+            label_ids:   task.labels?.map(l => l.id) ?? [],
         });
-        setViewTask(null);
+        setViewTaskId(null);
         setShowEditForm(true);
     };
 
@@ -113,11 +122,21 @@ export default function Board({ auth, board, tasks, users }) {
         });
     };
 
-    const updateStatus = (taskId, newStatus) =>
-        router.patch(`/tasks/${taskId}/status`, { status: newStatus }, { preserveScroll: true });
+    const updateStatus = (taskId, newStatus) => {
+        setUpdatingTaskStatus(taskId);
+        router.patch(`/tasks/${taskId}/status`, { status: newStatus }, {
+            preserveScroll: true,
+            onFinish: () => setUpdatingTaskStatus(null),
+        });
+    };
 
-    const updateAssign = (taskId, assignedTo) =>
-        router.patch(`/tasks/${taskId}/assignment`, { assigned_to: assignedTo }, { preserveScroll: true });
+    const updateAssign = (taskId, assignedTo) => {
+        setUpdatingTaskAssign(taskId);
+        router.patch(`/tasks/${taskId}/assignment`, { assigned_to: assignedTo }, {
+            preserveScroll: true,
+            onFinish: () => setUpdatingTaskAssign(null),
+        });
+    };
 
     const deleteTask = (task) => {
         openConfirm(
@@ -137,6 +156,7 @@ export default function Board({ auth, board, tasks, users }) {
     const [searchQuery,     setSearchQuery]     = useState('');
     const [filterStatus,    setFilterStatus]    = useState('all');
     const [filterPriority,  setFilterPriority]  = useState('all');
+    const [filterLabel,     setFilterLabel]     = useState('all');
     const [sortBy,          setSortBy]          = useState('default');
     const [collapsedGroups, setCollapsedGroups] = useState({});
     const [viewMode,        setViewMode]        = useState('full');
@@ -149,11 +169,12 @@ export default function Board({ auth, board, tasks, users }) {
         if (q) t = t.filter(x => x.title.toLowerCase().includes(q) || (x.description || '').toLowerCase().includes(q));
         if (filterStatus   !== 'all') t = t.filter(x => x.status   === filterStatus);
         if (filterPriority !== 'all') t = t.filter(x => x.priority === filterPriority);
+        if (filterLabel    !== 'all') t = t.filter(x => x.labels?.some(l => l.id === parseInt(filterLabel)));
         if (sortBy === 'priority') t = [...t].sort((a, b) => (PRIORITY_ORDER[a.priority] ?? 4) - (PRIORITY_ORDER[b.priority] ?? 4));
         if (sortBy === 'due_date') t = [...t].sort((a, b) => { if (!a.due_date) return 1; if (!b.due_date) return -1; return new Date(a.due_date) - new Date(b.due_date); });
         if (sortBy === 'progress') t = [...t].sort((a, b) => (b.progress ?? 0) - (a.progress ?? 0));
         return t;
-    }, [tasks, searchQuery, filterStatus, filterPriority, sortBy]);
+    }, [tasks, searchQuery, filterStatus, filterPriority, filterLabel, sortBy]);
 
     const groupedTasks = useMemo(() => ({
         in_progress: filteredTasks.filter(t => t.status === 'in_progress'),
@@ -311,6 +332,16 @@ export default function Board({ auth, board, tasks, users }) {
                                 </div>
                             </div>
 
+                            {/* 🏷 Labels */}
+                            {labels.length > 0 && (
+                            <div className="border-t border-gray-100 pt-4">
+                                <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5 flex items-center gap-1.5">
+                                    <span>🏷</span> Labels
+                                </p>
+                                <LabelPicker allLabels={labels} selected={data.label_ids} onChange={ids => setData('label_ids', ids)} />
+                            </div>
+                            )}
+
                             <button type="submit" disabled={processing}
                                 className="w-full flex justify-center items-center gap-2 py-2.5 px-4 rounded-xl text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-sm">
                                 {processing
@@ -324,7 +355,7 @@ export default function Board({ auth, board, tasks, users }) {
                 )}
 
                 {/* ── Edit Task Modal ───────────────────────── */}
-                <Modal open={showEditForm && !!selectedTask} onClose={() => { setShowEditForm(false); setSelectedTask(null); editForm.reset(); }} title="Edit Task" icon="edit" size="lg">
+                <Modal open={showEditForm && !!selectedTask} onClose={() => { setShowEditForm(false); setSelectedTask(null); editForm.reset(); }} title="Edit Task" icon="edit" size="lg" processing={editForm.processing}>
                     <form onSubmit={updateTask}>
                         <ModalBody>
                             {!canEditDetail && !canEditStatus && !canUpdateProgress && (
@@ -387,6 +418,12 @@ export default function Board({ auth, board, tasks, users }) {
                                     </FieldSelect>
                                 </div>
                             )}
+                            {labels.length > 0 && (
+                                <div>
+                                    <FieldLabel>Labels</FieldLabel>
+                                    <LabelPicker allLabels={labels} selected={editForm.data.label_ids} onChange={ids => editForm.setData('label_ids', ids)} />
+                                </div>
+                            )}
                         </ModalBody>
                         <ModalFooter
                             onCancel={() => { setShowEditForm(false); setSelectedTask(null); editForm.reset(); }}
@@ -442,6 +479,15 @@ export default function Board({ auth, board, tasks, users }) {
                             <option value="medium">Medium</option>
                             <option value="low">Low</option>
                         </select>
+                        {labels.length > 0 && (
+                        <select value={filterLabel} onChange={e => setFilterLabel(e.target.value)}
+                            className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:ring-2 focus:ring-blue-500">
+                            <option value="all">All Labels</option>
+                            {labels.map(l => (
+                                <option key={l.id} value={l.id}>{l.name}</option>
+                            ))}
+                        </select>
+                        )}
                         <select value={sortBy} onChange={e => setSortBy(e.target.value)}
                             className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:ring-2 focus:ring-blue-500">
                             <option value="default">Sort: Default</option>
@@ -459,13 +505,19 @@ export default function Board({ auth, board, tasks, users }) {
                                 ≡ Compact
                             </button>
                         </div>
+                        {canManageTask && (
+                        <button type="button" onClick={() => setShowLabelMgr(true)}
+                            className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-600 hover:bg-gray-50 focus:ring-2 focus:ring-blue-500 whitespace-nowrap">
+                            🏷 Labels
+                        </button>
+                        )}
                     </div>
 
                     {/* Active filter summary */}
-                    {(searchQuery || filterStatus !== 'all' || filterPriority !== 'all') && (
+                    {(searchQuery || filterStatus !== 'all' || filterPriority !== 'all' || filterLabel !== 'all') && (
                         <p className="text-xs text-gray-500 mb-3">
                             Menampilkan <strong>{filteredTasks.length}</strong> dari <strong>{taskStats.total}</strong> task &mdash;{' '}
-                            <button type="button" onClick={() => { setSearchQuery(''); setFilterStatus('all'); setFilterPriority('all'); }} className="text-blue-500 hover:underline">Hapus filter</button>
+                            <button type="button" onClick={() => { setSearchQuery(''); setFilterStatus('all'); setFilterPriority('all'); setFilterLabel('all'); }} className="text-blue-500 hover:underline">Hapus filter</button>
                         </p>
                     )}
 
@@ -473,10 +525,10 @@ export default function Board({ auth, board, tasks, users }) {
                     {filteredTasks.length === 0 && (
                         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
                             <p className="text-4xl mb-3">
-                                {(searchQuery || filterStatus !== 'all' || filterPriority !== 'all') ? '🔍' : '📋'}
+                                {(searchQuery || filterStatus !== 'all' || filterPriority !== 'all' || filterLabel !== 'all') ? '🔍' : '📋'}
                             </p>
                             <p className="text-gray-600 text-base font-medium">
-                                {(searchQuery || filterStatus !== 'all' || filterPriority !== 'all')
+                                {(searchQuery || filterStatus !== 'all' || filterPriority !== 'all' || filterLabel !== 'all')
                                     ? 'Tidak ada task yang sesuai filter.'
                                     : canManageTask ? 'Belum ada task. Buat task pertama Anda!' : 'Belum ada task yang ditugaskan.'}
                             </p>
@@ -519,10 +571,11 @@ export default function Board({ auth, board, tasks, users }) {
                                                     if (viewMode === 'compact') return (
                                                         <div key={task.id} className="bg-white px-4 py-2.5 flex items-center gap-3 hover:bg-gray-50 transition group/row">
                                                             <span className={`shrink-0 w-2 h-2 rounded-full ${dot}`} />
-                                                            <button onClick={() => setViewTask(task)} className="flex-1 text-left text-sm font-medium text-gray-900 hover:text-blue-600 truncate">
+                                                            <button onClick={() => setViewTaskId(task.id)} className="flex-1 text-left text-sm font-medium text-gray-900 hover:text-blue-600 truncate">
                                                                 {task.title}
                                                             </button>
                                                             <span className={`shrink-0 text-xs px-1.5 py-0.5 rounded-full font-semibold ${pm.cls}`}>{pm.icon} {pm.label}</span>
+                                                            {task.labels?.map(l => <LabelChip key={l.id} label={l} />)}
                                                             {due && (
                                                                 <span className={`shrink-0 text-xs whitespace-nowrap ${due.isOverdue ? 'text-red-500 font-semibold' : 'text-gray-400'}`}>
                                                                     {due.label}
@@ -553,7 +606,7 @@ export default function Board({ auth, board, tasks, users }) {
                                                             <div className="flex justify-between items-start gap-4">
                                                                 {/* Left: task info */}
                                                                 <div className="flex-1 min-w-0">
-                                                                    <button onClick={() => setViewTask(task)} className="text-left text-base font-semibold text-gray-900 hover:text-blue-600 transition leading-snug break-words">
+                                                                    <button onClick={() => setViewTaskId(task.id)} className="text-left text-base font-semibold text-gray-900 hover:text-blue-600 transition leading-snug break-words">
                                                                         {task.title}
                                                                     </button>
                                                                     {task.description && (
@@ -571,6 +624,7 @@ export default function Board({ auth, board, tasks, users }) {
                                                                                 📅 {due.label}
                                                                             </span>
                                                                         )}
+                                                                        {task.labels?.map(l => <LabelChip key={l.id} label={l} />)}
                                                                     </div>
                                                                     <div className="mt-3">
                                                                         <div className="flex justify-between text-xs text-gray-400 mb-1">
@@ -615,26 +669,47 @@ export default function Board({ auth, board, tasks, users }) {
                                                                 <div className="flex flex-col gap-2 shrink-0 min-w-[180px]">
                                                                     <div>
                                                                         <label className="block text-xs font-medium text-gray-500 mb-1">Status</label>
-                                                                        <select value={task.status} onChange={e => updateStatus(task.id, e.target.value)}
-                                                                            disabled={!canEditTask(task)}
-                                                                            className="text-sm border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 w-full">
-                                                                            <option value="todo">To Do</option>
-                                                                            <option value="in_progress">In Progress</option>
-                                                                            <option value="done">Done</option>
-                                                                        </select>
+                                                                        <div className="relative">
+                                                                            <select value={task.status} onChange={e => updateStatus(task.id, e.target.value)}
+                                                                                disabled={!canEditTask(task) || updatingTaskStatus === task.id}
+                                                                                className="text-sm border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 w-full disabled:opacity-60">
+                                                                                <option value="todo">To Do</option>
+                                                                                <option value="in_progress">In Progress</option>
+                                                                                <option value="done">Done</option>
+                                                                            </select>
+                                                                            {updatingTaskStatus === task.id && (
+                                                                                <span className="absolute inset-y-0 right-6 flex items-center pointer-events-none">
+                                                                                    <svg className="animate-spin h-3.5 w-3.5 text-blue-500" fill="none" viewBox="0 0 24 24">
+                                                                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                                                                                    </svg>
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
                                                                     </div>
                                                                     {canManageTask && (
                                                                         <div>
                                                                             <label className="block text-xs font-medium text-gray-500 mb-1">Assigned To</label>
-                                                                            <select value={task.assigned_to || ''} onChange={e => updateAssign(task.id, e.target.value)}
-                                                                                className="text-sm border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 w-full">
-                                                                                <option value="">Unassigned</option>
-                                                                                {users && users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                                                                            </select>
+                                                                            <div className="relative">
+                                                                                <select value={task.assigned_to || ''} onChange={e => updateAssign(task.id, e.target.value)}
+                                                                                    disabled={updatingTaskAssign === task.id}
+                                                                                    className="text-sm border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 w-full disabled:opacity-60">
+                                                                                    <option value="">Unassigned</option>
+                                                                                    {users && users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                                                                                </select>
+                                                                                {updatingTaskAssign === task.id && (
+                                                                                    <span className="absolute inset-y-0 right-6 flex items-center pointer-events-none">
+                                                                                        <svg className="animate-spin h-3.5 w-3.5 text-blue-500" fill="none" viewBox="0 0 24 24">
+                                                                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                                                                                        </svg>
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
                                                                         </div>
                                                                     )}
                                                                     <div className="flex items-center gap-2 pt-1">
-                                                                        <button onClick={() => setViewTask(task)} className="flex-1 text-center text-sm font-medium text-gray-600 px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition">Detail</button>
+                                                                        <button onClick={() => setViewTaskId(task.id)} className="flex-1 text-center text-sm font-medium text-gray-600 px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition">Detail</button>
                                                                         {canEditTask(task) && (
                                                                             <button onClick={() => openEdit(task)} className="flex-1 text-center text-sm font-medium text-blue-600 px-3 py-1.5 border border-blue-300 rounded-lg hover:bg-blue-50 transition">Edit</button>
                                                                         )}
@@ -662,7 +737,7 @@ export default function Board({ auth, board, tasks, users }) {
                 key={viewTask?.id}
                 task={viewTask}
                 users={users ?? []}
-                onClose={() => setViewTask(null)}
+                onClose={() => setViewTaskId(null)}
                 onEdit={() => openEdit(viewTask)}
                 canEditDetail={viewTask ? canEditDetail : false}
                 canEditStatus={viewTask ? canEditStatus : false}
@@ -672,7 +747,19 @@ export default function Board({ auth, board, tasks, users }) {
                 onStatusChange={updateStatus}
                 onAssignChange={updateAssign}
                 authUser={auth.user}
+                allLabels={labels}
             />
+
+            {/* ── Label Manager Modal ───────────────────────────── */}
+            <Modal open={showLabelMgr} onClose={() => setShowLabelMgr(false)} title="Manage Labels" icon="tag" size="md">
+                <ModalBody>
+                    <LabelManager
+                        projectId={board.project_id}
+                        labels={labels}
+                        onLabelsChange={setLabels}
+                    />
+                </ModalBody>
+            </Modal>
         </AppLayout>
     );
 }

@@ -20,7 +20,8 @@ const NAV_GROUPS = [
         label: 'Analytics',
         adminOnly: false,
         links: [
-            { label: 'Reporting', href: '/reporting', icon: '📈', permission: 'access_reporting' },
+            { label: 'Reporting',         href: '/reporting',         icon: '📈', permission: 'access_reporting' },
+            { label: 'Executive Report',  href: '/executive-report',  icon: '📊', permission: 'access_executive_report' },
         ],
     },
     {
@@ -196,6 +197,8 @@ function NotificationBell({ initialCount = 0 }) {
 export default function AppLayout({ auth, title, children }) {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [userMenuOpen, setUserMenuOpen] = useState(false);
+    const [navigating, setNavigating] = useState(false);
+    const navTimerRef = useRef(null);
     const { url, props } = usePage();
     const userPermissions = props.userPermissions ?? [];
     const allRoles        = props.allRoles ?? [];
@@ -215,6 +218,18 @@ export default function AppLayout({ auth, title, children }) {
             if (flash.success) toast.success(flash.success);
             if (flash.error)   toast.error(flash.error);
         });
+    }, []);
+
+    /** Global page-transition loading indicator */
+    useEffect(() => {
+        const offStart = router.on('start', () => {
+            navTimerRef.current = setTimeout(() => setNavigating(true), 300);
+        });
+        const offFinish = router.on('finish', () => {
+            clearTimeout(navTimerRef.current);
+            setNavigating(false);
+        });
+        return () => { offStart(); offFinish(); };
     }, []);
 
     const hasPermission = (perm) => {
@@ -405,6 +420,19 @@ export default function AppLayout({ auth, title, children }) {
 
         {/* Global toast notifications */}
         <Toast />
+
+        {/* Global page-navigation loading overlay (only for slow navigations >300ms) */}
+        {navigating && (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center bg-white/60 backdrop-blur-[1px] pointer-events-none">
+                <div className="flex flex-col items-center gap-3 bg-white rounded-2xl shadow-xl px-8 py-6 pointer-events-none">
+                    <svg className="animate-spin h-8 w-8 text-violet-600" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                    </svg>
+                    <span className="text-sm font-medium text-gray-600">Memuat…</span>
+                </div>
+            </div>
+        )}
         </>
     );
 }

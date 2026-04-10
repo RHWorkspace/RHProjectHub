@@ -11,7 +11,7 @@ import React from 'react';
  *   size       'sm'|'md'|'lg' — max-width (default 'md')
  *   children   ReactNode      — body + footer content (use ModalBody / ModalFooter helpers, or raw JSX)
  */
-export default function Modal({ open, onClose, title, icon, size = 'md', children }) {
+export default function Modal({ open, onClose, title, icon, size = 'md', processing = false, children }) {
     if (!open) return null;
 
     const MAX_W = {
@@ -23,7 +23,7 @@ export default function Modal({ open, onClose, title, icon, size = 'md', childre
     return (
         <div
             className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-[2px] p-4"
-            onClick={onClose}
+            onClick={processing ? undefined : onClose}
         >
             <div
                 className={`w-full ${MAX_W[size] ?? MAX_W.md} bg-white rounded-2xl shadow-2xl max-h-[90vh] flex flex-col`}
@@ -40,15 +40,27 @@ export default function Modal({ open, onClose, title, icon, size = 'md', childre
                     <button
                         type="button"
                         onClick={onClose}
-                        className="shrink-0 flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors text-xl leading-none"
+                        disabled={processing}
+                        className="shrink-0 flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors text-xl leading-none disabled:opacity-30 disabled:cursor-not-allowed"
                         aria-label="Tutup"
                     >
                         &times;
                     </button>
                 </div>
 
-                {/* Scrollable body */}
-                <div className="overflow-y-auto flex-1">
+                {/* Scrollable body — overlaid when processing */}
+                <div className="overflow-y-auto flex-1 relative">
+                    {processing && (
+                        <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-[1px] rounded-b-2xl">
+                            <div className="flex flex-col items-center gap-2">
+                                <svg className="animate-spin h-7 w-7 text-violet-600" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                                </svg>
+                                <span className="text-xs font-medium text-gray-500">Menyimpan…</span>
+                            </div>
+                        </div>
+                    )}
                     {children}
                 </div>
             </div>

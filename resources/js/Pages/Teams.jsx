@@ -520,7 +520,7 @@ export default function Teams({ auth, teams, users, projects, teamRoles = [] }) 
                 </div>
             )}
 
-            <Modal open={showCreateTeamForm} onClose={() => setShowCreateTeamForm(false)} title="Buat Tim Baru" icon="👥" size="sm">
+            <Modal open={showCreateTeamForm} onClose={() => setShowCreateTeamForm(false)} title="Buat Tim Baru" icon="👥" size="sm" processing={createTeamForm.processing}>
                     <form onSubmit={submitCreateTeam}>
                         <ModalBody>
                             <div>
@@ -551,7 +551,7 @@ export default function Teams({ auth, teams, users, projects, teamRoles = [] }) 
                     </form>
                 </Modal>
 
-                <Modal open={showEditTeamForm && !!selectedTeam} onClose={() => { setShowEditTeamForm(false); setSelectedTeam(null); }} title="Edit Tim" icon="✏️" size="sm">
+                <Modal open={showEditTeamForm && !!selectedTeam} onClose={() => { setShowEditTeamForm(false); setSelectedTeam(null); }} title="Edit Tim" icon="✏️" size="sm" processing={editTeamForm.processing}>
                     <form onSubmit={submitEditTeam}>
                         <ModalBody>
                             <div>
@@ -582,7 +582,7 @@ export default function Teams({ auth, teams, users, projects, teamRoles = [] }) 
                     </form>
                 </Modal>
 
-                <Modal open={showAddMemberForm && !!selectedTeam} onClose={() => { setShowAddMemberForm(false); setSelectedTeam(null); }} title={selectedTeam ? `Tambah Anggota — ${selectedTeam.name}` : 'Tambah Anggota'} icon="👤" size="sm">
+                <Modal open={showAddMemberForm && !!selectedTeam} onClose={() => { setShowAddMemberForm(false); setSelectedTeam(null); }} title={selectedTeam ? `Tambah Anggota — ${selectedTeam.name}` : 'Tambah Anggota'} icon="👤" size="sm" processing={addMemberForm.processing}>
                     <form onSubmit={submitAddMember}>
                         <ModalBody>
                             <div>
@@ -641,7 +641,7 @@ export default function Teams({ auth, teams, users, projects, teamRoles = [] }) 
                     </form>
                 </Modal>
 
-                <Modal open={showMapProjectForm && !!selectedTeam} onClose={() => { setShowMapProjectForm(false); setSelectedTeam(null); }} title={selectedTeam ? `Hubungkan Project — ${selectedTeam.name}` : 'Hubungkan Project'} icon="📁" size="sm">
+                <Modal open={showMapProjectForm && !!selectedTeam} onClose={() => { setShowMapProjectForm(false); setSelectedTeam(null); }} title={selectedTeam ? `Hubungkan Project — ${selectedTeam.name}` : 'Hubungkan Project'} icon="📁" size="sm" processing={mapProjectForm.processing}>
                     <form onSubmit={submitMapProject}>
                         <ModalBody>
                             <div>

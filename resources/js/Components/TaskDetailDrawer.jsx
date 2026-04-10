@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useForm, router } from '@inertiajs/react';
+import { LabelChip } from './LabelManager';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function initials(name = '') {
@@ -69,11 +70,19 @@ const PRIORITY_META = {
 //   onAssignChange    – (taskId, assignedTo) => void
 //   authUser          – auth.user object
 // ── Inner drawer (only mounted when task is defined) ─────────────────────────
-function DrawerContent({ task, users = [], onClose, onEdit, canEditDetail = false, canEditStatus = false, canUpdateProgress = false, canAssign = false, canManageTask = false, onStatusChange, onAssignChange, authUser }) {
+function DrawerContent({ task, users = [], onClose, onEdit, canEditDetail = false, canEditStatus = false, canUpdateProgress = false, canAssign = false, canManageTask = false, onStatusChange, onAssignChange, authUser, allLabels = [] }) {
     const [activeTab, setActiveTab] = useState('detail');
+    const [changingStatus, setChangingStatus] = useState(false);
+    const [changingAssign, setChangingAssign] = useState(false);
+    const [cyclingSubtaskId, setCyclingSubtaskId] = useState(null);
+    const [deletingSubtaskId, setDeletingSubtaskId] = useState(null);
     const commentForm  = useForm({ body: '' });
     const subtaskForm  = useForm({ title: '', assigned_to: '', priority: 'medium', due_date: '' });
     const subtasks     = task.subtasks ?? [];
+
+    // Reset inline loading states when task data updates after request completes
+    useEffect(() => { setChangingStatus(false); }, [task.status]);
+    useEffect(() => { setChangingAssign(false); }, [task.assigned_to]);
 
     const submitSubtask = (e) => {
         e.preventDefault();
@@ -85,11 +94,19 @@ function DrawerContent({ task, users = [], onClose, onEdit, canEditDetail = fals
 
     const cycleSubtaskStatus = (subtask) => {
         const cycle = { todo: 'in_progress', in_progress: 'done', done: 'todo' };
-        router.patch(`/subtasks/${subtask.id}/status`, { status: cycle[subtask.status] }, { preserveScroll: true });
+        setCyclingSubtaskId(subtask.id);
+        router.patch(`/subtasks/${subtask.id}/status`, { status: cycle[subtask.status] }, {
+            preserveScroll: true,
+            onFinish: () => setCyclingSubtaskId(null),
+        });
     };
 
     const deleteSubtask = (subtask) => {
-        router.delete(`/subtasks/${subtask.id}`, { preserveScroll: true });
+        setDeletingSubtaskId(subtask.id);
+        router.delete(`/subtasks/${subtask.id}`, {
+            preserveScroll: true,
+            onFinish: () => setDeletingSubtaskId(null),
+        });
     };
 
     const sm  = STATUS_META[task.status]    ?? STATUS_META.todo;
@@ -196,6 +213,7 @@ function DrawerContent({ task, users = [], onClose, onEdit, canEditDetail = fals
                                         ⚠️ {due.label}
                                     </span>
                                 )}
+                                {task.labels?.map(l => <LabelChip key={l.id} label={l} />)}
                             </div>
 
                             {/* Description */}
@@ -250,16 +268,30 @@ function DrawerContent({ task, users = [], onClose, onEdit, canEditDetail = fals
                                 {canAssign && users.length > 0 && (
                                     <div className="mt-2">
                                         <label className="block text-xs text-gray-500 mb-1">Reassign to</label>
-                                        <select
-                                            value={task.assigned_to || ''}
-                                            onChange={e => onAssignChange(task.id, e.target.value)}
-                                            className="text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-full px-2 py-1.5"
-                                        >
-                                            <option value="">— Unassigned —</option>
-                                            {users.map(u => (
-                                                <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
-                                            ))}
-                                        </select>
+                                        <div className="relative">
+                                            <select
+                                                value={task.assigned_to || ''}
+                                                disabled={changingAssign}
+                                                onChange={e => {
+                                                    setChangingAssign(true);
+                                                    onAssignChange(task.id, e.target.value);
+                                                }}
+                                                className="text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-full px-2 py-1.5 disabled:opacity-60"
+                                            >
+                                                <option value="">— Unassigned —</option>
+                                                {users.map(u => (
+                                                    <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
+                                                ))}
+                                            </select>
+                                            {changingAssign && (
+                                                <span className="absolute inset-y-0 right-6 flex items-center pointer-events-none">
+                                                    <svg className="animate-spin h-3.5 w-3.5 text-blue-500" fill="none" viewBox="0 0 24 24">
+                                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                                                    </svg>
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -309,14 +341,26 @@ function DrawerContent({ task, users = [], onClose, onEdit, canEditDetail = fals
                                             return (
                                                 <button
                                                     key={s}
-                                                    onClick={() => onStatusChange(task.id, s)}
-                                                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition ${
+                                                    disabled={changingStatus}
+                                                    onClick={() => {
+                                                        setChangingStatus(true);
+                                                        onStatusChange(task.id, s);
+                                                    }}
+                                                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition disabled:opacity-60 disabled:cursor-not-allowed ${
                                                         task.status === s
                                                             ? `${m.cls} border-transparent shadow-sm`
                                                             : 'bg-white border-gray-200 text-gray-500 hover:border-gray-400'
                                                     }`}
                                                 >
-                                                    {m.label}
+                                                    {changingStatus && task.status !== s ? (
+                                                        <span className="inline-flex items-center justify-center gap-1">
+                                                            <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+                                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                                                            </svg>
+                                                            {m.label}
+                                                        </span>
+                                                    ) : m.label}
                                                 </button>
                                             );
                                         })}
@@ -463,8 +507,9 @@ function DrawerContent({ task, users = [], onClose, onEdit, canEditDetail = fals
                                                 {/* Status cycle button */}
                                                 <button
                                                     onClick={() => cycleSubtaskStatus(subtask)}
+                                                    disabled={cyclingSubtaskId === subtask.id || deletingSubtaskId === subtask.id}
                                                     title={`Status: ${subtask.status}. Click to cycle.`}
-                                                    className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition ${
+                                                    className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition disabled:opacity-60 disabled:cursor-wait ${
                                                         subtask.status === 'done'
                                                             ? 'bg-emerald-500 border-emerald-500 text-white'
                                                             : subtask.status === 'in_progress'
@@ -472,8 +517,17 @@ function DrawerContent({ task, users = [], onClose, onEdit, canEditDetail = fals
                                                             : 'bg-white border-gray-300'
                                                     }`}
                                                 >
-                                                    {subtask.status === 'done' && <span className="text-xs leading-none">&#10003;</span>}
-                                                    {subtask.status === 'in_progress' && <span className="text-xs leading-none">&#8231;</span>}
+                                                    {cyclingSubtaskId === subtask.id ? (
+                                                        <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+                                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                                                        </svg>
+                                                    ) : (
+                                                        <>
+                                                            {subtask.status === 'done' && <span className="text-xs leading-none">&#10003;</span>}
+                                                            {subtask.status === 'in_progress' && <span className="text-xs leading-none">&#8231;</span>}
+                                                        </>
+                                                    )}
                                                 </button>
 
                                                 {/* Content */}
@@ -505,10 +559,16 @@ function DrawerContent({ task, users = [], onClose, onEdit, canEditDetail = fals
                                                 {canManageTask && (
                                                     <button
                                                         onClick={() => deleteSubtask(subtask)}
-                                                        className="shrink-0 opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 text-lg leading-none transition"
+                                                        disabled={deletingSubtaskId === subtask.id || cyclingSubtaskId === subtask.id}
+                                                        className="shrink-0 opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 text-lg leading-none transition disabled:opacity-60 disabled:cursor-wait"
                                                         title="Delete subtask"
                                                     >
-                                                        &times;
+                                                        {deletingSubtaskId === subtask.id ? (
+                                                            <svg className="animate-spin h-4 w-4 text-red-400" fill="none" viewBox="0 0 24 24">
+                                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                                                            </svg>
+                                                        ) : '×'}
                                                     </button>
                                                 )}
                                             </div>
@@ -563,9 +623,17 @@ function DrawerContent({ task, users = [], onClose, onEdit, canEditDetail = fals
                                         <button
                                             type="submit"
                                             disabled={subtaskForm.processing || !subtaskForm.data.title.trim()}
-                                            className="px-4 py-1.5 text-sm font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700 disabled:opacity-50 transition"
+                                            className="inline-flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700 disabled:opacity-50 transition"
                                         >
-                                            {subtaskForm.processing ? 'Adding...' : '+ Add Subtask'}
+                                            {subtaskForm.processing ? (
+                                                <>
+                                                    <svg className="animate-spin h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24">
+                                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                                                    </svg>
+                                                    Adding…
+                                                </>
+                                            ) : '+ Add Subtask'}
                                         </button>
                                     </div>
                                 </form>

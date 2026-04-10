@@ -5,6 +5,7 @@ import ConfirmDialog from '../Components/ConfirmDialog';
 import Pagination from '../Components/Pagination';
 import Modal, { ModalBody, ModalFooter, FieldLabel, FieldError, FieldInput, FieldTextarea, FieldSelect } from '../Components/Modal';
 import TaskDetailDrawer from '../Components/TaskDetailDrawer';
+import LabelManager, { LabelChip, LabelPicker } from '../Components/LabelManager';
 
 const STATUS_LABEL = { todo: 'Todo', in_progress: 'In Progress', done: 'Done' };
 const STATUS_COLOR = {
@@ -19,10 +20,12 @@ const PRIORITY_COLOR = {
     low:      'bg-green-100 text-green-700',
 };
 
-export default function ManageTask({ auth, tasks, projects, boards, users, taskPermissions = {} }) {
+export default function ManageTask({ auth, tasks, projects, boards, users, taskPermissions = {}, labels: initialLabels = [] }) {
     const isAdmin   = auth.user.role === 'admin';
     const isManager = auth.user.role === 'manager';
     const canManage = isAdmin || isManager;
+
+    const [labels, setLabels] = useState(initialLabels);
 
     const {
         canCreate         = canManage,
@@ -40,6 +43,7 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
     const [filterProject,   setFilterProject]   = useState('all');
     const [filterBoard,     setFilterBoard]     = useState('all');
     const [filterAssignee,  setFilterAssignee]  = useState('all');
+    const [filterLabel,     setFilterLabel]     = useState('all');
 
     // ── Sorting ───────────────────────────────────────────────
     const [sortKey,  setSortKey]  = useState('created_at');
@@ -50,7 +54,9 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
     const [perPage,  setPerPage]  = useState(10);
 
     // ── View drawer ───────────────────────────────────────────
-    const [viewTask, setViewTask] = useState(null);
+    const [viewTaskId, setViewTaskId] = useState(null);
+    // Derive viewTask reactively so the drawer always shows fresh data after Inertia refreshes
+    const viewTask = useMemo(() => tasks?.find(t => t.id === viewTaskId) ?? null, [tasks, viewTaskId]);
 
     const updateStatus = (taskId, status) =>
         router.patch(`/tasks/${taskId}/status`, { status }, { preserveScroll: true });
@@ -75,6 +81,7 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
         assigned_to: '',
         start_date:  '',
         due_date:    '',
+        label_ids:   [],
     });
 
     // ── Add modal ─────────────────────────────────────────────
@@ -90,6 +97,7 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
         assigned_to: '',
         start_date:  '',
         due_date:    '',
+        label_ids:   [],
     });
 
     const addBoardOptions = addBoardProject === 'all'
@@ -121,6 +129,7 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
             assigned_to: task.assigned_to ?? '',
             start_date:  task.start_date ? task.start_date.substring(0, 10) : '',
             due_date:    task.due_date ? task.due_date.substring(0, 10) : '',
+            label_ids:   task.labels?.map(l => l.id) ?? [],
         });
     };
 
@@ -169,6 +178,7 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
         if (filterProject  !== 'all') data = data.filter((t) => t.board?.project?.id === parseInt(filterProject, 10));
         if (filterBoard    !== 'all') data = data.filter((t) => t.board?.id          === parseInt(filterBoard,   10));
         if (filterAssignee !== 'all') data = data.filter((t) => String(t.assigned_to) === filterAssignee);
+        if (filterLabel    !== 'all') data = data.filter((t) => t.labels?.some(l => l.id === parseInt(filterLabel)));
 
         // sort
         data.sort((a, b) => {
@@ -188,7 +198,7 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
         });
 
         return data;
-    }, [tasks, search, filterStatus, filterPriority, filterProject, filterBoard, filterAssignee, sortKey, sortDir]);
+    }, [tasks, search, filterStatus, filterPriority, filterProject, filterBoard, filterAssignee, filterLabel, sortKey, sortDir]);
 
     const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
     const paginated  = filtered.slice((page - 1) * perPage, page * perPage);
@@ -201,7 +211,7 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
 
     const resetFilter = () => {
         setSearch(''); setFilterStatus('all'); setFilterPriority('all');
-        setFilterProject('all'); setFilterBoard('all'); setFilterAssignee('all');
+        setFilterProject('all'); setFilterBoard('all'); setFilterAssignee('all'); setFilterLabel('all');
         setPage(1);
     };
 
@@ -304,6 +314,13 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
                         {users.map((u) => <option key={u.id} value={String(u.id)}>{u.name}</option>)}
                     </select>
 
+                    {labels.length > 0 && (
+                    <select value={filterLabel} onChange={(e) => { setFilterLabel(e.target.value); setPage(1); }} className={selectClass}>
+                        <option value="all">Semua Label</option>
+                        {labels.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                    </select>
+                    )}
+
                     <div className="flex items-center gap-2">
                         <span className="text-sm text-gray-500">{filtered.length} task ditemukan</span>
                         <button onClick={resetFilter} className="text-xs text-blue-600 hover:underline ml-2">Reset Filter</button>
@@ -369,6 +386,11 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
                                                 <span className="inline-flex items-center gap-1 mt-1 text-xs text-violet-600 font-medium">
                                                     &#128203; {task.subtasks.filter(s => s.status === 'done').length}/{task.subtasks.length} subtasks
                                                 </span>
+                                            )}
+                                            {task.labels?.length > 0 && (
+                                                <div className="flex flex-wrap gap-1 mt-1">
+                                                    {task.labels.map(l => <LabelChip key={l.id} label={l} />)}
+                                                </div>
                                             )}
                                         </td>
 
@@ -445,7 +467,7 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
                                         {/* Actions */}
                                         <td className="px-4 py-3 text-right whitespace-nowrap">
                                             <button
-                                                onClick={() => setViewTask(task)}
+                                                onClick={() => setViewTaskId(task.id)}
                                                 className="inline-flex items-center px-2.5 py-1 text-xs font-medium text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 mr-1"
                                             >
                                                 Detail
@@ -488,7 +510,7 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
             </div>
 
             {/* ── Add Task Modal ────────────────────────── */}
-            <Modal open={showAddModal} onClose={() => setShowAddModal(false)} title="Tambah Task Baru" icon="+" size="lg">
+            <Modal open={showAddModal} onClose={() => setShowAddModal(false)} title="Tambah Task Baru" icon="+" size="lg" processing={addForm.processing}>
                 <form onSubmit={submitAdd}>
                     <ModalBody>
                         {/* 📍 Lokasi */}
@@ -653,6 +675,13 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
                             </div>
                         </div>
 
+                        {labels.length > 0 && (
+                        <div className="border-t border-gray-100 pt-4">
+                            <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5">🏷 Labels</p>
+                            <LabelPicker allLabels={labels} selected={addForm.data.label_ids} onChange={ids => addForm.setData('label_ids', ids)} />
+                        </div>
+                        )}
+
                     </ModalBody>
                     <ModalFooter
                         onCancel={() => setShowAddModal(false)}
@@ -662,7 +691,7 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
                 </form>
             </Modal>
             {/* ── Edit Modal ───────────────────────────── */}
-            <Modal open={!!editingTask} onClose={() => setEditingTask(null)} title="Edit Task" icon="edit" size="lg">
+            <Modal open={!!editingTask} onClose={() => setEditingTask(null)} title="Edit Task" icon="edit" size="lg" processing={editForm.processing}>
                 <form onSubmit={submitEdit}>
                     <ModalBody>
                         {/* 📝 Informasi Task */}
@@ -796,6 +825,13 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
                             </div>
                         </div>
 
+                        {labels.length > 0 && (
+                        <div className="border-t border-gray-100 pt-4">
+                            <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5">🏷 Labels</p>
+                            <LabelPicker allLabels={labels} selected={editForm.data.label_ids} onChange={ids => editForm.setData('label_ids', ids)} />
+                        </div>
+                        )}
+
                     </ModalBody>
                     <ModalFooter
                         onCancel={() => setEditingTask(null)}
@@ -809,8 +845,8 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
                 key={viewTask?.id}
                 task={viewTask}
                 users={users ?? []}
-                onClose={() => setViewTask(null)}
-                onEdit={canEditDetail ? () => { openEdit(viewTask); setViewTask(null); } : null}
+                onClose={() => setViewTaskId(null)}
+                onEdit={canEditDetail ? () => { openEdit(viewTask); setViewTaskId(null); } : null}
                 canEditDetail={canEditDetail}
                 canEditStatus={canEditStatus}
                 canUpdateProgress={canUpdateProgress}
