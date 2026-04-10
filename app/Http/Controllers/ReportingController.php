@@ -85,4 +85,47 @@ class ReportingController extends Controller
             'teams'    => $teamQuery->get(),
         ]);
     }
+
+    public function executive()
+    {
+        $user = auth()->user();
+
+        if (! RolePermission::check($user->role, 'access_executive_report')) {
+            abort(403, 'Akses Executive Report tidak diizinkan.');
+        }
+
+        if ($user->role === 'admin') {
+            $tasks    = Task::with(['assignedUser', 'board.project.teams'])
+                            ->whereNull('parent_id')
+                            ->orderBy('created_at', 'desc')
+                            ->get();
+            $projects = Project::select('id', 'name')->orderBy('name')->get();
+            $teams    = Team::select('id', 'name')->orderBy('name')->get();
+        } else {
+            $managerTeams   = $user->teams()->with(['users:id', 'projects:id'])->get();
+            $teamUserIds    = $managerTeams->flatMap(fn($t) => $t->users->pluck('id'))->unique()->values();
+            $teamProjectIds = $managerTeams->flatMap(fn($t) => $t->projects->pluck('id'))->unique()->values();
+
+            $tasks = Task::where(function ($q) use ($teamUserIds, $teamProjectIds) {
+                $q->whereIn('assigned_to', $teamUserIds)
+                  ->orWhere(function ($q2) use ($teamProjectIds) {
+                      $q2->whereNull('assigned_to')
+                         ->whereHas('board', fn($b) => $b->whereIn('project_id', $teamProjectIds));
+                  });
+            })
+                ->whereNull('parent_id')
+                ->with(['assignedUser', 'board.project.teams'])
+                ->orderBy('created_at', 'desc')
+                ->get();
+
+            $projects = Project::select('id', 'name')->whereIn('id', $teamProjectIds)->orderBy('name')->get();
+            $teams    = Team::select('id', 'name')->whereIn('id', $managerTeams->pluck('id'))->orderBy('name')->get();
+        }
+
+        return Inertia::render('ExecutiveReport', [
+            'tasks'    => $tasks,
+            'projects' => $projects,
+            'teams'    => $teams,
+        ]);
+    }
 }

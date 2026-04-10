@@ -31,4 +31,9 @@ class Project extends Model
         return $this->belongsToMany(Team::class)
             ->withTimestamps();
     }
+
+    public function labels()
+    {
+        return $this->hasMany(Label::class);
+    }
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Board;
+use App\Models\Label;
 use App\Models\Task;
 use App\Models\TaskActivityLog;
 use App\Models\Team;
@@ -112,9 +113,10 @@ class BoardController extends Controller
             'auth' => [
                 'user' => $user,
             ],
-            'board' => $board->load('project'),
-            'tasks' => $board->tasks()->whereNull('parent_id')->with(['assignedUser', 'comments.user', 'activityLogs.user', 'subtasks.assignedUser'])->get(),
-            'users' => $usersQuery->get(),
+            'board'  => $board->load('project'),
+            'tasks'  => $board->tasks()->whereNull('parent_id')->with(['assignedUser', 'labels', 'comments.user', 'activityLogs.user', 'subtasks.assignedUser'])->get(),
+            'users'  => $usersQuery->get(),
+            'labels' => Label::where('project_id', $board->project_id)->orderBy('name')->get(),
         ]);
     }
 
@@ -143,6 +145,8 @@ class BoardController extends Controller
             'assigned_to' => ['nullable', Rule::in($assignableUserIds)],
             'due_date'    => 'nullable|date',
             'start_date'  => 'nullable|date',
+            'label_ids'   => 'array',
+            'label_ids.*' => 'integer|exists:labels,id',
         ]);
 
         $task = $board->tasks()->create([
@@ -155,6 +159,10 @@ class BoardController extends Controller
             'due_date'    => $validated['due_date'] ?? null,
             'start_date'  => $validated['start_date'] ?? null,
         ]);
+
+        if (!empty($validated['label_ids'])) {
+            $task->labels()->sync($validated['label_ids']);
+        }
 
         TaskActivityLog::log($task->id, $authUser->id, 'created', null, [
             'title'    => $task->title,
@@ -251,6 +259,8 @@ class BoardController extends Controller
             'due_date'    => 'nullable|date',
             'start_date'  => 'nullable|date',
             'assigned_to' => 'nullable|exists:users,id',
+            'label_ids'   => 'array',
+            'label_ids.*' => 'integer|exists:labels,id',
         ]);
 
         $update = [
@@ -276,6 +286,9 @@ class BoardController extends Controller
         }
 
         $task->update($update);
+
+        // Sync labels
+        $task->labels()->sync($validated['label_ids'] ?? []);
 
         if (!empty($changes)) {
             TaskActivityLog::log($task->id, $authUser->id, 'updated',

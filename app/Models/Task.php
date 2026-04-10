@@ -51,4 +51,9 @@ class Task extends Model
     {
         return $this->hasMany(TaskActivityLog::class)->latest();
     }
+
+    public function labels()
+    {
+        return $this->belongsToMany(Label::class, 'label_task');
+    }
 }

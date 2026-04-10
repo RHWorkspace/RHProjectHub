@@ -14,9 +14,10 @@ class RoleController extends Controller
     /** Full list of configurable permissions with metadata. */
     const PERMISSION_LIST = [
         // Halaman
-        ['key' => 'access_reporting',    'label' => 'View Reporting',     'category' => 'Halaman',       'description' => 'Akses halaman pelaporan task'],
-        ['key' => 'access_workload',     'label' => 'View Workload',      'category' => 'Halaman',       'description' => 'Akses halaman workload tim'],
-        ['key' => 'access_manage_tasks', 'label' => 'Manage Tasks Page',  'category' => 'Halaman',       'description' => 'Akses halaman kelola semua task'],
+        ['key' => 'access_reporting',          'label' => 'View Reporting',          'category' => 'Halaman',       'description' => 'Akses halaman pelaporan task'],
+        ['key' => 'access_executive_report',   'label' => 'View Executive Report',   'category' => 'Halaman',       'description' => 'Akses halaman executive report (admin/manager)'],
+        ['key' => 'access_workload',           'label' => 'View Workload',           'category' => 'Halaman',       'description' => 'Akses halaman workload tim'],
+        ['key' => 'access_manage_tasks',       'label' => 'Manage Tasks Page',       'category' => 'Halaman',       'description' => 'Akses halaman kelola semua task'],
         // Project
         ['key' => 'create_project',      'label' => 'Create Project',     'category' => 'Project',       'description' => 'Membuat dan mengedit project'],
         ['key' => 'delete_project',      'label' => 'Delete Project',     'category' => 'Project',       'description' => 'Menghapus project'],

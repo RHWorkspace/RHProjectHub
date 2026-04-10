@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Board;
+use App\Models\Label;
 use App\Models\Project;
 use App\Models\RolePermission;
 use App\Models\Task;
@@ -27,6 +28,7 @@ class TaskController extends Controller
         $tasksQuery = Task::whereNull('parent_id')->with([
             'board.project.teams',
             'assignedUser:id,name,email,role',
+            'labels',
             'comments.user:id,name',
             'activityLogs.user:id,name',
             'subtasks.assignedUser:id,name',
@@ -88,6 +90,8 @@ class TaskController extends Controller
             'projects'        => $projectQuery->get(),
             'boards'          => $boardQuery->get(),
             'users'           => $assignableUsers,
+            'labels'          => Label::when(!$isAdmin, fn($q) => $q->whereIn('project_id', $accessibleProjectIds))
+                                    ->orderBy('name')->get(),
             'taskPermissions' => [
                 'canCreate'        => in_array($user->role, ['admin', 'manager']) || RolePermission::check($user->role, 'create_task'),
                 'canEditDetail'    => in_array($user->role, ['admin', 'manager']) || RolePermission::check($user->role, 'edit_task_detail'),
@@ -130,9 +134,16 @@ class TaskController extends Controller
             'assigned_to' => 'nullable|exists:users,id',
             'due_date'    => 'nullable|date',
             'start_date'  => 'nullable|date',
+            'label_ids'   => 'array',
+            'label_ids.*' => 'integer|exists:labels,id',
         ]);
 
+        $labelIds = $validated['label_ids'] ?? [];
+        unset($validated['label_ids']);
         $newTask = Task::create($validated);
+        if ($labelIds) {
+            $newTask->labels()->sync($labelIds);
+        }
 
         // Notify new assignee (skip self-assignment)
         if (!empty($validated['assigned_to']) && $validated['assigned_to'] !== $user->id) {
@@ -164,12 +175,18 @@ class TaskController extends Controller
             'assigned_to' => 'nullable|exists:users,id',
             'due_date'    => 'nullable|date',
             'start_date'  => 'nullable|date',
+            'label_ids'   => 'array',
+            'label_ids.*' => 'integer|exists:labels,id',
         ]);
+
+        $labelIds = $validated['label_ids'] ?? [];
+        unset($validated['label_ids']);
 
         $oldAssignee = $task->assigned_to;
         $oldStatus   = $task->status;
 
         $task->update($validated);
+        $task->labels()->sync($labelIds);
         $task->refresh()->load('board');
 
         // Notify newly assigned user (if assignment changed and not self)

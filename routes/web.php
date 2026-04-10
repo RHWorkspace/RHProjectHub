@@ -15,6 +15,7 @@ use App\Http\Controllers\RoleController;
 use App\Http\Controllers\TaskCommentController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\SubtaskController;
+use App\Http\Controllers\LabelController;
 
 Route::get('/', function () {
     if (auth()->check()) {
@@ -37,6 +38,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/my-tasks', [AuthController::class, 'myTasks'])->name('my-tasks.index');
     Route::get('/users', [UserController::class, 'index'])->name('users.index');
     Route::get('/reporting', [ReportingController::class, 'index'])->name('reporting.index');
+    Route::get('/executive-report', [ReportingController::class, 'executive'])->name('executive-report.index');
 
     // Project routes
     Route::get('/projects', [ProjectController::class, 'manageProjects'])->name('projects.index');
@@ -116,4 +118,11 @@ Route::middleware('auth')->group(function () {
     Route::get('/notifications',           [NotificationController::class, 'index'])->name('notifications.index');
     Route::patch('/notifications/{id}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
     Route::patch('/notifications/read-all',  [NotificationController::class, 'markAllRead'])->name('notifications.read-all');
+
+    // Labels
+    Route::get('/projects/{project}/labels',    [LabelController::class, 'index'])->name('labels.index');
+    Route::post('/projects/{project}/labels',   [LabelController::class, 'store'])->name('labels.store');
+    Route::patch('/labels/{label}',             [LabelController::class, 'update'])->name('labels.update');
+    Route::delete('/labels/{label}',            [LabelController::class, 'destroy'])->name('labels.destroy');
+    Route::post('/tasks/{task}/labels',         [LabelController::class, 'syncTask'])->name('tasks.labels.sync');
 });
