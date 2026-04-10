@@ -7,6 +7,43 @@ import Modal, { ModalBody, ModalFooter, FieldLabel, FieldError, FieldInput, Fiel
 import TaskDetailDrawer from '../Components/TaskDetailDrawer';
 import LabelManager, { LabelChip, LabelPicker } from '../Components/LabelManager';
 
+function initials(name = '') {
+    return name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
+}
+function avatarColor(name = '') {
+    const COLORS = ['bg-violet-500','bg-sky-500','bg-emerald-500','bg-amber-500','bg-rose-500','bg-indigo-500','bg-pink-500'];
+    let h = 0;
+    for (let c of name) h = (h * 31 + c.charCodeAt(0)) & 0xffff;
+    return COLORS[h % COLORS.length];
+}
+function MultiAssigneePicker({ users = [], selected = [], onChange, disabled = false }) {
+    return (
+        <div className={`space-y-0.5 max-h-32 overflow-y-auto border border-gray-200 rounded-lg p-1.5 bg-white ${disabled ? 'opacity-60 pointer-events-none' : ''}`}>
+            {users.length === 0 ? (
+                <p className="text-xs text-gray-400 italic px-2 py-1">No users available</p>
+            ) : (
+                users.map(u => {
+                    const isChecked = selected.some(id => Number(id) === u.id);
+                    return (
+                        <label key={u.id} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-50 cursor-pointer">
+                            <input type="checkbox" checked={isChecked}
+                                onChange={e => {
+                                    if (e.target.checked) onChange([...selected, u.id]);
+                                    else onChange(selected.filter(id => Number(id) !== u.id));
+                                }}
+                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                            <div className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 ${avatarColor(u.name)}`}>
+                                {initials(u.name)}
+                            </div>
+                            <span className="text-xs text-gray-700 truncate">{u.name}</span>
+                        </label>
+                    );
+                })
+            )}
+        </div>
+    );
+}
+
 const STATUS_LABEL = { todo: 'Todo', in_progress: 'In Progress', done: 'Done' };
 const STATUS_COLOR = {
     todo:        'bg-gray-100 text-gray-700',
@@ -524,191 +561,163 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
                 <form onSubmit={submitAdd}>
                     <ModalBody>
                         <div className="grid grid-cols-2 gap-x-6">
-                        <div className="space-y-4">
-                        {/* 📍 Lokasi */}
-                        <div>
-                            <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5 flex items-center gap-1.5">
-                                <span>📍</span> Lokasi
-                            </p>
-                            <div className="grid grid-cols-2 gap-3">
+                            {/* ── Left column ── */}
+                            <div className="space-y-4">
                                 <div>
-                                    <FieldLabel>Filter Project</FieldLabel>
-                                    <FieldSelect
-                                        value={addBoardProject}
-                                        onChange={(e) => { setAddBoardProject(e.target.value); addForm.setData('board_id', ''); }}
-                                    >
-                                        <option value="all">Semua Project</option>
-                                        {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                    </FieldSelect>
-                                </div>
-                                <div>
-                                    <FieldLabel required>Board</FieldLabel>
-                                    <FieldSelect
-                                        value={addForm.data.board_id}
-                                        onChange={(e) => addForm.setData('board_id', e.target.value)}
-                                        required
-                                    >
-                                        <option value="">Pilih Board</option>
-                                        {addBoardOptions.map((b) => (
-                                            <option key={b.id} value={b.id}>{b.name}</option>
-                                        ))}
-                                    </FieldSelect>
-                                    <FieldError>{addForm.errors.board_id}</FieldError>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* 📝 Informasi Task */}
-                        <div className="border-t border-gray-100 pt-4">
-                            <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5 flex items-center gap-1.5">
-                                <span>📝</span> Informasi Task
-                            </p>
-                            <div className="space-y-3">
-                                <div>
-                                    <FieldLabel required>Judul Task</FieldLabel>
-                                    <FieldInput
-                                        type="text"
-                                        value={addForm.data.title}
-                                        onChange={(e) => addForm.setData('title', e.target.value)}
-                                        placeholder="Masukkan judul task..."
-                                        required
-                                    />
-                                    <FieldError>{addForm.errors.title}</FieldError>
-                                </div>
-                                <div>
-                                    <FieldLabel>Deskripsi</FieldLabel>
-                                    <FieldTextarea
-                                        value={addForm.data.description}
-                                        onChange={(e) => addForm.setData('description', e.target.value)}
-                                        rows={3}
-                                        placeholder="Tambahkan deskripsi task (opsional)..."
-                                    />
-                                </div>
-                            </div>
-                        </div>
-                        </div>{/* end left col */}
-                        <div className="space-y-4">
-                        {/* 🏷️ Status & Prioritas */}
-                        <div>
-                            <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5 flex items-center gap-1.5">
-                                <span>🏷️</span> Status & Prioritas
-                            </p>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <FieldLabel>Status</FieldLabel>
-                <div className="flex gap-1.5 flex-wrap mt-1">
-                    {[
-                        { val: 'todo',        label: 'Todo',        on: 'bg-gray-500 text-white border-gray-500'       },
-                        { val: 'in_progress', label: 'In Progress', on: 'bg-blue-500 text-white border-blue-500'       },
-                        { val: 'done',        label: 'Done',        on: 'bg-emerald-500 text-white border-emerald-500' },
-                    ].map(({ val, label, on }) => (
-                        <button key={val} type="button"
-                            onClick={() => addForm.setData('status', val)}
-                            className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
-                                addForm.data.status === val ? on : 'border-gray-200 text-gray-500 bg-white hover:bg-gray-50'
-                            }`}
-                        >{label}</button>
-                    ))}
-                </div>                                </div>
-                                <div>
-                                    <FieldLabel>Prioritas</FieldLabel>
-                <div className="flex gap-1.5 flex-wrap mt-1">
-                    {[
-                        { val: 'low',      label: 'Low',      on: 'bg-gray-400 text-white border-gray-400'     },
-                        { val: 'medium',   label: 'Medium',   on: 'bg-amber-400 text-white border-amber-400'   },
-                        { val: 'high',     label: 'High',     on: 'bg-orange-500 text-white border-orange-500' },
-                        { val: 'critical', label: 'Critical', on: 'bg-red-600 text-white border-red-600'       },
-                    ].map(({ val, label, on }) => (
-                        <button key={val} type="button"
-                            onClick={() => addForm.setData('priority', val)}
-                            className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
-                                addForm.data.priority === val ? on : 'border-gray-200 text-gray-500 bg-white hover:bg-gray-50'
-                            }`}
-                        >{label}</button>
-                    ))}
-                </div>                                </div>
-                            </div>
-                            <div className="mt-3">
-                                <div className="flex items-center justify-between mb-1">
-                                    <FieldLabel>Progress</FieldLabel>
-                                    <span className="text-sm font-bold text-blue-600">{addForm.data.progress}%</span>
-                                </div>
-                                <input
-                                    type="range"
-                                    min="0"
-                                    max="100"
-                                    step="5"
-                                    value={addForm.data.progress}
-                                    onChange={(e) => addForm.setData('progress', parseInt(e.target.value))}
-                                    className="block w-full h-2 rounded-lg cursor-pointer accent-blue-600"
-                                    style={{ background: `linear-gradient(to right, #3b82f6 ${addForm.data.progress}%, #e5e7eb ${addForm.data.progress}%)` }}
-                                />
-                                <div className="flex justify-between text-xs text-gray-400 mt-1">
-                                    <span>0%</span><span>50%</span><span>100%</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* 👤 Penugasan & Jadwal */}
-                        <div className="border-t border-gray-100 pt-4">
-                            <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5 flex items-center gap-1.5">
-                                <span>👤</span> Penugasan & Jadwal
-                            </p>
-                            <div className="space-y-3">
-                                <div>
-                                    <FieldLabel>Assignee</FieldLabel>
-                                    <div className="space-y-0.5 max-h-32 overflow-y-auto border border-gray-200 rounded-lg p-1.5 bg-white">
-                                        {users.length === 0 ? (
-                                            <p className="text-xs text-gray-400 italic px-2 py-1">No users available</p>
-                                        ) : (
-                                            users.map(u => {
-                                                const isChecked = addForm.data.assignee_ids.some(id => Number(id) === u.id);
-                                                return (
-                                                    <label key={u.id} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-50 cursor-pointer">
-                                                        <input type="checkbox" checked={isChecked}
-                                                            onChange={e => {
-                                                                const ids = addForm.data.assignee_ids;
-                                                                addForm.setData('assignee_ids', e.target.checked ? [...ids, u.id] : ids.filter(id => Number(id) !== u.id));
-                                                            }}
-                                                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                                                        <span className="text-xs text-gray-700">{u.name}</span>
-                                                    </label>
-                                                );
-                                            })
-                                        )}
+                                    <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5 flex items-center gap-1.5">
+                                        <span>📍</span> Lokasi
+                                    </p>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <FieldLabel>Filter Project</FieldLabel>
+                                            <FieldSelect
+                                                value={addBoardProject}
+                                                onChange={(e) => { setAddBoardProject(e.target.value); addForm.setData('board_id', ''); }}
+                                            >
+                                                <option value="all">Semua Project</option>
+                                                {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                            </FieldSelect>
+                                        </div>
+                                        <div>
+                                            <FieldLabel required>Board</FieldLabel>
+                                            <FieldSelect
+                                                value={addForm.data.board_id}
+                                                onChange={(e) => addForm.setData('board_id', e.target.value)}
+                                                required
+                                            >
+                                                <option value="">Pilih Board</option>
+                                                {addBoardOptions.map((b) => (
+                                                    <option key={b.id} value={b.id}>{b.name}</option>
+                                                ))}
+                                            </FieldSelect>
+                                            <FieldError>{addForm.errors.board_id}</FieldError>
+                                        </div>
                                     </div>
-                                    {addForm.errors.assignee_ids && <FieldError>{addForm.errors.assignee_ids}</FieldError>}
                                 </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <FieldLabel>Start Date</FieldLabel>
-                                        <FieldInput
-                                            type="date"
-                                            value={addForm.data.start_date}
-                                            onChange={(e) => addForm.setData('start_date', e.target.value)}
-                                        />
+                                <div className="border-t border-gray-100 pt-4">
+                                    <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5 flex items-center gap-1.5">
+                                        <span>📝</span> Informasi Task
+                                    </p>
+                                    <div className="space-y-3">
+                                        <div>
+                                            <FieldLabel required>Judul Task</FieldLabel>
+                                            <FieldInput
+                                                type="text"
+                                                value={addForm.data.title}
+                                                onChange={(e) => addForm.setData('title', e.target.value)}
+                                                placeholder="Masukkan judul task..."
+                                                required
+                                            />
+                                            <FieldError>{addForm.errors.title}</FieldError>
+                                        </div>
+                                        <div>
+                                            <FieldLabel>Deskripsi</FieldLabel>
+                                            <FieldTextarea
+                                                value={addForm.data.description}
+                                                onChange={(e) => addForm.setData('description', e.target.value)}
+                                                rows={3}
+                                                placeholder="Tambahkan deskripsi task (opsional)..."
+                                            />
+                                        </div>
                                     </div>
-                                    <div>
-                                        <FieldLabel>Due Date</FieldLabel>
-                                        <FieldInput
-                                            type="date"
-                                            value={addForm.data.due_date}
-                                            onChange={(e) => addForm.setData('due_date', e.target.value)}
-                                        />
+                                </div>
+                                <div className="border-t border-gray-100 pt-4">
+                                    <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5 flex items-center gap-1.5">
+                                        <span>👤</span> Penugasan & Jadwal
+                                    </p>
+                                    <div className="space-y-3">
+                                        <div>
+                                            <FieldLabel>Assign To</FieldLabel>
+                                            <MultiAssigneePicker
+                                                users={users ?? []}
+                                                selected={addForm.data.assignee_ids}
+                                                onChange={ids => addForm.setData('assignee_ids', ids)}
+                                            />
+                                            {addForm.errors.assignee_ids && <FieldError>{addForm.errors.assignee_ids}</FieldError>}
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <FieldLabel>Start Date</FieldLabel>
+                                                <FieldInput
+                                                    type="date"
+                                                    value={addForm.data.start_date}
+                                                    onChange={(e) => addForm.setData('start_date', e.target.value)}
+                                                />
+                                            </div>
+                                            <div>
+                                                <FieldLabel>Due Date</FieldLabel>
+                                                <FieldInput
+                                                    type="date"
+                                                    value={addForm.data.due_date}
+                                                    onChange={(e) => addForm.setData('due_date', e.target.value)}
+                                                />
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
+                            {/* ── Right column ── */}
+                            <div className="space-y-4">
+                                <div>
+                                    <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5 flex items-center gap-1.5">
+                                        <span>🏷️</span> Status & Prioritas
+                                    </p>
+                                    <div className="space-y-3">
+                                        <div>
+                                            <FieldLabel>Status</FieldLabel>
+                                            <div className="flex gap-1.5 flex-wrap mt-1">
+                                                {[
+                                                    { val: 'todo',        label: 'Todo',        on: 'bg-gray-500 text-white border-gray-500'       },
+                                                    { val: 'in_progress', label: 'In Progress', on: 'bg-blue-500 text-white border-blue-500'       },
+                                                    { val: 'done',        label: 'Done',        on: 'bg-emerald-500 text-white border-emerald-500' },
+                                                ].map(({ val, label, on }) => (
+                                                    <button key={val} type="button" onClick={() => addForm.setData('status', val)}
+                                                        className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
+                                                            addForm.data.status === val ? on : 'border-gray-200 text-gray-500 bg-white hover:bg-gray-50'
+                                                        }`}>{label}</button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <FieldLabel>Prioritas</FieldLabel>
+                                            <div className="flex gap-1.5 flex-wrap mt-1">
+                                                {[
+                                                    { val: 'low',      label: 'Low',      on: 'bg-gray-400 text-white border-gray-400'     },
+                                                    { val: 'medium',   label: 'Medium',   on: 'bg-amber-400 text-white border-amber-400'   },
+                                                    { val: 'high',     label: 'High',     on: 'bg-orange-500 text-white border-orange-500' },
+                                                    { val: 'critical', label: 'Critical', on: 'bg-red-600 text-white border-red-600'       },
+                                                ].map(({ val, label, on }) => (
+                                                    <button key={val} type="button" onClick={() => addForm.setData('priority', val)}
+                                                        className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
+                                                            addForm.data.priority === val ? on : 'border-gray-200 text-gray-500 bg-white hover:bg-gray-50'
+                                                        }`}>{label}</button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div className="flex items-center justify-between mb-1">
+                                                <FieldLabel>Progress</FieldLabel>
+                                                <span className="text-sm font-bold text-blue-600">{addForm.data.progress}%</span>
+                                            </div>
+                                            <input type="range" min="0" max="100" step="5" value={addForm.data.progress}
+                                                onChange={(e) => addForm.setData('progress', parseInt(e.target.value))}
+                                                className="block w-full h-2 rounded-lg cursor-pointer accent-blue-600"
+                                                style={{ background: `linear-gradient(to right, #3b82f6 ${addForm.data.progress}%, #e5e7eb ${addForm.data.progress}%)` }}
+                                            />
+                                            <div className="flex justify-between text-xs text-gray-400 mt-1">
+                                                <span>0%</span><span>50%</span><span>100%</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {labels.length > 0 && (
+                                    <div className="border-t border-gray-100 pt-4">
+                                        <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5">🏷 Labels</p>
+                                        <LabelPicker allLabels={labels} selected={addForm.data.label_ids} onChange={ids => addForm.setData('label_ids', ids)} />
+                                    </div>
+                                )}
+                            </div>
                         </div>
-
-                        {labels.length > 0 && (
-                        <div className="border-t border-gray-100 pt-4">
-                            <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5">🏷 Labels</p>
-                            <LabelPicker allLabels={labels} selected={addForm.data.label_ids} onChange={ids => addForm.setData('label_ids', ids)} />
-                        </div>
-                        )}
-
-                        </div>{/* end right col */}
-                        </div>{/* end grid */}
                     </ModalBody>
                     <ModalFooter
                         onCancel={() => setShowAddModal(false)}
@@ -722,160 +731,162 @@ export default function ManageTask({ auth, tasks, projects, boards, users, taskP
                 <form onSubmit={submitEdit}>
                     <ModalBody>
                         <div className="grid grid-cols-2 gap-x-6">
-                        <div className="space-y-4">
-                        {/* 📝 Informasi Task */}
-                        <div>
-                            <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5 flex items-center gap-1.5">
-                                <span>📝</span> Informasi Task
-                            </p>
-                            <div className="space-y-3">
+                            {/* ── Left column ── */}
+                            <div className="space-y-4">
                                 <div>
-                                    <FieldLabel required>Judul Task</FieldLabel>
-                                    <FieldInput
-                                        type="text"
-                                        value={editForm.data.title}
-                                        onChange={(e) => editForm.setData('title', e.target.value)}
-                                        placeholder="Masukkan judul task..."
-                                        required
-                                    />
-                                    <FieldError>{editForm.errors.title}</FieldError>
-                                </div>
-                                <div>
-                                    <FieldLabel>Deskripsi</FieldLabel>
-                                    <FieldTextarea
-                                        value={editForm.data.description}
-                                        onChange={(e) => editForm.setData('description', e.target.value)}
-                                        rows={3}
-                                        placeholder="Tambahkan deskripsi task (opsional)..."
-                                    />
-                                </div>
-                            </div>
-                        </div>
-                        </div>{/* end left col */}
-                        <div className="space-y-4">
-                        {/* 🏷️ Status & Prioritas */}
-                        <div>
-                            <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5 flex items-center gap-1.5">
-                                <span>🏷️</span> Status & Prioritas
-                            </p>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <FieldLabel>Status</FieldLabel>
-                <div className="flex gap-1.5 flex-wrap mt-1">
-                    {[
-                        { val: 'todo',        label: 'Todo',        on: 'bg-gray-500 text-white border-gray-500'       },
-                        { val: 'in_progress', label: 'In Progress', on: 'bg-blue-500 text-white border-blue-500'       },
-                        { val: 'done',        label: 'Done',        on: 'bg-emerald-500 text-white border-emerald-500' },
-                    ].map(({ val, label, on }) => (
-                        <button key={val} type="button"
-                            onClick={() => canEditStatus && editForm.setData('status', val)}
-                            disabled={!canEditStatus}
-                            className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
-                                editForm.data.status === val ? on : 'border-gray-200 text-gray-500 bg-white hover:bg-gray-50'
-                            } disabled:opacity-50 disabled:cursor-not-allowed`}
-                        >{label}</button>
-                    ))}
-                </div>                                </div>
-                                <div>
-                                    <FieldLabel>Prioritas</FieldLabel>
-                <div className="flex gap-1.5 flex-wrap mt-1">
-                    {[
-                        { val: 'low',      label: 'Low',      on: 'bg-gray-400 text-white border-gray-400'     },
-                        { val: 'medium',   label: 'Medium',   on: 'bg-amber-400 text-white border-amber-400'   },
-                        { val: 'high',     label: 'High',     on: 'bg-orange-500 text-white border-orange-500' },
-                        { val: 'critical', label: 'Critical', on: 'bg-red-600 text-white border-red-600'       },
-                    ].map(({ val, label, on }) => (
-                        <button key={val} type="button"
-                            onClick={() => editForm.setData('priority', val)}
-                            className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
-                                editForm.data.priority === val ? on : 'border-gray-200 text-gray-500 bg-white hover:bg-gray-50'
-                            }`}
-                        >{label}</button>
-                    ))}
-                </div>                                </div>
-                            </div>
-                            <div className="mt-3">
-                                <div className="flex items-center justify-between mb-1">
-                                    <FieldLabel>Progress</FieldLabel>
-                                    <span className="text-sm font-bold text-blue-600">{editForm.data.progress}%</span>
-                                </div>
-                                <input
-                                    type="range"
-                                    min="0"
-                                    max="100"
-                                    step="5"
-                                    value={editForm.data.progress}
-                                    onChange={(e) => editForm.setData('progress', parseInt(e.target.value))}
-                                    disabled={!canUpdateProgress}
-                                    className={`block w-full h-2 rounded-lg accent-blue-600 ${canUpdateProgress ? 'cursor-pointer' : 'opacity-40 cursor-not-allowed'}`}
-                                    style={{ background: `linear-gradient(to right, #3b82f6 ${editForm.data.progress}%, #e5e7eb ${editForm.data.progress}%)` }}
-                                />
-                                <div className="flex justify-between text-xs text-gray-400 mt-1">
-                                    <span>0%</span><span>50%</span><span>100%</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* 👤 Penugasan & Jadwal */}
-                        <div className="border-t border-gray-100 pt-4">
-                            <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5 flex items-center gap-1.5">
-                                <span>👤</span> Penugasan & Jadwal
-                            </p>
-                            <div className="space-y-3">
-                                <div>
-                                    <FieldLabel>Assignee</FieldLabel>
-                                    <div className="space-y-0.5 max-h-32 overflow-y-auto border border-gray-200 rounded-lg p-1.5 bg-white">
-                                        {users.length === 0 ? (
-                                            <p className="text-xs text-gray-400 italic px-2 py-1">No users available</p>
-                                        ) : (
-                                            users.map(u => {
-                                                const isChecked = editForm.data.assignee_ids.some(id => Number(id) === u.id);
-                                                return (
-                                                    <label key={u.id} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-50 cursor-pointer">
-                                                        <input type="checkbox" checked={isChecked}
-                                                            onChange={e => {
-                                                                const ids = editForm.data.assignee_ids;
-                                                                editForm.setData('assignee_ids', e.target.checked ? [...ids, u.id] : ids.filter(id => Number(id) !== u.id));
-                                                            }}
-                                                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                                                        <span className="text-xs text-gray-700">{u.name}</span>
-                                                    </label>
-                                                );
-                                            })
-                                        )}
-                                    </div>
-                                    {editForm.errors.assignee_ids && <FieldError>{editForm.errors.assignee_ids}</FieldError>}
-                                </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <FieldLabel>Start Date</FieldLabel>
-                                        <FieldInput
-                                            type="date"
-                                            value={editForm.data.start_date}
-                                            onChange={(e) => editForm.setData('start_date', e.target.value)}
-                                        />
-                                    </div>
-                                    <div>
-                                        <FieldLabel>Due Date</FieldLabel>
-                                        <FieldInput
-                                            type="date"
-                                            value={editForm.data.due_date}
-                                            onChange={(e) => editForm.setData('due_date', e.target.value)}
-                                        />
+                                    <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5 flex items-center gap-1.5">
+                                        <span>📝</span> Informasi Task
+                                    </p>
+                                    <div className="space-y-3">
+                                        <div>
+                                            <FieldLabel required>Judul Task</FieldLabel>
+                                            <FieldInput
+                                                type="text"
+                                                value={editForm.data.title}
+                                                onChange={(e) => editForm.setData('title', e.target.value)}
+                                                placeholder="Masukkan judul task..."
+                                                required
+                                            />
+                                            <FieldError>{editForm.errors.title}</FieldError>
+                                        </div>
+                                        <div>
+                                            <FieldLabel>Deskripsi</FieldLabel>
+                                            <FieldTextarea
+                                                value={editForm.data.description}
+                                                onChange={(e) => editForm.setData('description', e.target.value)}
+                                                rows={3}
+                                                placeholder="Tambahkan deskripsi task (opsional)..."
+                                            />
+                                        </div>
                                     </div>
                                 </div>
+                                {canManage ? (
+                                <div className="border-t border-gray-100 pt-4">
+                                    <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5 flex items-center gap-1.5">
+                                        <span>👤</span> Penugasan & Jadwal
+                                    </p>
+                                    <div className="space-y-3">
+                                        <div>
+                                            <FieldLabel>Assign To</FieldLabel>
+                                            <MultiAssigneePicker
+                                                users={users ?? []}
+                                                selected={editForm.data.assignee_ids}
+                                                onChange={ids => editForm.setData('assignee_ids', ids)}
+                                            />
+                                            {editForm.errors.assignee_ids && <FieldError>{editForm.errors.assignee_ids}</FieldError>}
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <FieldLabel>Start Date</FieldLabel>
+                                                <FieldInput
+                                                    type="date"
+                                                    value={editForm.data.start_date}
+                                                    onChange={(e) => editForm.setData('start_date', e.target.value)}
+                                                />
+                                            </div>
+                                            <div>
+                                                <FieldLabel>Due Date</FieldLabel>
+                                                <FieldInput
+                                                    type="date"
+                                                    value={editForm.data.due_date}
+                                                    onChange={(e) => editForm.setData('due_date', e.target.value)}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                ) : (
+                                <div className="border-t border-gray-100 pt-4">
+                                    <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5 flex items-center gap-1.5">
+                                        <span>📅</span> Jadwal
+                                    </p>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <FieldLabel>Start Date</FieldLabel>
+                                            <FieldInput
+                                                type="date"
+                                                value={editForm.data.start_date}
+                                                onChange={(e) => editForm.setData('start_date', e.target.value)}
+                                            />
+                                        </div>
+                                        <div>
+                                            <FieldLabel>Due Date</FieldLabel>
+                                            <FieldInput
+                                                type="date"
+                                                value={editForm.data.due_date}
+                                                onChange={(e) => editForm.setData('due_date', e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                                )}
+                            </div>
+                            {/* ── Right column ── */}
+                            <div className="space-y-4">
+                                <div>
+                                    <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5 flex items-center gap-1.5">
+                                        <span>🏷️</span> Status & Prioritas
+                                    </p>
+                                    <div className="space-y-3">
+                                        <div>
+                                            <FieldLabel>Status</FieldLabel>
+                                            <div className="flex flex-wrap gap-2 mt-1">
+                                                {[
+                                                    { val: 'todo',        label: 'To Do',       on: 'bg-slate-600 text-white border-slate-600'    },
+                                                    { val: 'in_progress', label: 'In Progress', on: 'bg-blue-600 text-white border-blue-600'      },
+                                                    { val: 'done',        label: 'Done',        on: 'bg-emerald-600 text-white border-emerald-600' },
+                                                ].map(({ val, label, on }) => (
+                                                    <button key={val} type="button"
+                                                        disabled={!canEditStatus}
+                                                        onClick={() => canEditStatus && editForm.setData('status', val)}
+                                                        className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${
+                                                            editForm.data.status === val ? on : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                                                        } ${!canEditStatus ? 'opacity-40 cursor-not-allowed' : ''}`}
+                                                    >{label}</button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <FieldLabel>Prioritas</FieldLabel>
+                                            <div className="flex flex-wrap gap-2 mt-1">
+                                                {[
+                                                    { val: 'low',      label: '🟢 Low',      on: 'bg-green-600 text-white border-green-600'   },
+                                                    { val: 'medium',   label: '🟡 Medium',   on: 'bg-yellow-500 text-white border-yellow-500' },
+                                                    { val: 'high',     label: '🟠 High',     on: 'bg-orange-500 text-white border-orange-500' },
+                                                    { val: 'critical', label: '🔴 Critical', on: 'bg-red-600 text-white border-red-600'       },
+                                                ].map(({ val, label, on }) => (
+                                                    <button key={val} type="button" onClick={() => editForm.setData('priority', val)}
+                                                        className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${
+                                                            editForm.data.priority === val ? on : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                                                        }`}>{label}</button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div className="flex items-center justify-between mb-1">
+                                                <FieldLabel>Progress</FieldLabel>
+                                                <span className="text-sm font-bold text-blue-600">{editForm.data.progress}%</span>
+                                            </div>
+                                            <input type="range" min="0" max="100" step="5" value={editForm.data.progress}
+                                                onChange={(e) => editForm.setData('progress', parseInt(e.target.value))}
+                                                disabled={!canUpdateProgress}
+                                                className={`block w-full h-2 rounded-lg accent-blue-600 ${canUpdateProgress ? 'cursor-pointer' : 'opacity-40 cursor-not-allowed'}`}
+                                                style={{ background: `linear-gradient(to right, #3b82f6 ${editForm.data.progress}%, #e5e7eb ${editForm.data.progress}%)` }}
+                                            />
+                                            <div className="flex justify-between text-xs text-gray-400 mt-1">
+                                                <span>0%</span><span>50%</span><span>100%</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {labels.length > 0 && (
+                                    <div className="border-t border-gray-100 pt-4">
+                                        <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5">🏷 Labels</p>
+                                        <LabelPicker allLabels={labels} selected={editForm.data.label_ids} onChange={ids => editForm.setData('label_ids', ids)} />
+                                    </div>
+                                )}
                             </div>
                         </div>
-
-                        {labels.length > 0 && (
-                        <div className="border-t border-gray-100 pt-4">
-                            <p className="text-xs font-bold uppercase tracking-widest text-blue-400 mb-2.5">🏷 Labels</p>
-                            <LabelPicker allLabels={labels} selected={editForm.data.label_ids} onChange={ids => editForm.setData('label_ids', ids)} />
-                        </div>
-                        )}
-
-                        </div>{/* end right col */}
-                        </div>{/* end grid */}
                     </ModalBody>
                     <ModalFooter
                         onCancel={() => setEditingTask(null)}
